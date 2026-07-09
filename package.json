@@ -1,0 +1,23 @@
+{
+  "name": "ai-shturman",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm run build -w @ai-shturman/shared && npm run build -w @ai-shturman/gdebenz-client && npm run dev -w @ai-shturman/api",
+    "dev:api": "npm run build -w @ai-shturman/shared && npm run build -w @ai-shturman/gdebenz-client && npm run dev -w @ai-shturman/api",
+    "dev:web": "npm run build -w @ai-shturman/shared && npm run dev -w @ai-shturman/web",
+    "build:api": "npm run build -w @ai-shturman/api",
+    "build:web": "npm run build -w @ai-shturman/web",
+    "build": "tsc -b && npm run build -w @ai-shturman/web",
+    "start": "npm run start:api",
+    "start:api": "npm run start -w @ai-shturman/api",
+    "lint": "tsc -b --pretty false && npm run lint -w @ai-shturman/web"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.4"
+  }
+}
