@@ -2,16 +2,24 @@ import type { GeoSearchResponse, GeoSearchResult } from "@ai-shturman/shared";
 import { env } from "../config/env.js";
 import { TtlCache } from "../utils/ttl-cache.js";
 
-interface NominatimSearchResult {
-  display_name?: string;
-  name?: string;
-  lat?: string;
-  lon?: string;
+interface OrsGeocodeFeature {
+  properties?: {
+    label?: string;
+    name?: string;
+  };
+  geometry?: {
+    coordinates?: unknown;
+  };
 }
 
-const geoCache = new TtlCache<GeoSearchResult[]>(24 * 60 * 60 * 1000);
-let nominatimQueue: Promise<void> = Promise.resolve();
-let nextNominatimRequestAt = 0;
+interface OrsGeocodeResponse {
+  features?: OrsGeocodeFeature[];
+}
+
+const GEO_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+const geoCache = new TtlCache<GeoSearchResult[]>(GEO_CACHE_TTL_MS);
+let orsQueue: Promise<void> = Promise.resolve();
+let nextOrsRequestAt = 0;
 
 const presetResults = new Map<string, GeoSearchResult>([
   [
@@ -39,6 +47,15 @@ const presetResults = new Map<string, GeoSearchResult>([
       address: "Дюртюли, Республика Башкортостан, Россия",
       lat: 55.484804,
       lon: 54.868628
+    }
+  ],
+  [
+    "чистополь",
+    {
+      name: "Чистополь",
+      address: "Чистополь, Республика Татарстан, Россия",
+      lat: 55.36311,
+      lon: 50.64244
     }
   ]
 ]);
@@ -74,7 +91,7 @@ export async function searchGeo(query: string): Promise<GeoSearchResponse> {
     };
   }
 
-  const results = await scheduleNominatimRequest(() => fetchNominatim(normalizedQuery));
+  const results = await scheduleOrsRequest(() => fetchOrsGeocode(normalizedQuery));
   geoCache.set(cacheKey, results);
 
   return {
@@ -82,33 +99,6 @@ export async function searchGeo(query: string): Promise<GeoSearchResponse> {
     query: normalizedQuery,
     results
   };
-}
-
-function scheduleNominatimRequest<T>(task: () => Promise<T>): Promise<T> {
-  const run = nominatimQueue.then(async () => {
-    const waitMs = Math.max(0, nextNominatimRequestAt - Date.now());
-
-    if (waitMs > 0) {
-      await delay(waitMs);
-    }
-
-    try {
-      return await task();
-    } finally {
-      nextNominatimRequestAt = Date.now() + 1100;
-    }
-  });
-
-  nominatimQueue = run.then(
-    () => undefined,
-    () => undefined
-  );
-
-  return run;
-}
-
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 export async function getFirstGeoResult(query: string): Promise<GeoSearchResult> {
@@ -122,68 +112,121 @@ export async function getFirstGeoResult(query: string): Promise<GeoSearchResult>
   return first;
 }
 
-async function fetchNominatim(query: string): Promise<GeoSearchResult[]> {
-  const url = new URL("/search", env.nominatimBaseUrl);
-  url.searchParams.set("format", "json");
-  url.searchParams.set("q", query);
-  url.searchParams.set("limit", "5");
-  url.searchParams.set("addressdetails", "0");
+function scheduleOrsRequest<T>(task: () => Promise<T>): Promise<T> {
+  const run = orsQueue.then(async () => {
+    const waitMs = Math.max(0, nextOrsRequestAt - Date.now());
+
+    if (waitMs > 0) {
+      await delay(waitMs);
+    }
+
+    try {
+      return await task();
+    } finally {
+      nextOrsRequestAt = Date.now() + 350;
+    }
+  });
+
+  orsQueue = run.then(
+    () => undefined,
+    () => undefined
+  );
+
+  return run;
+}
+
+async function fetchOrsGeocode(query: string): Promise<GeoSearchResult[]> {
+  if (!env.openRouteServiceApiKey) {
+    throw serviceError("OPENROUTESERVICE_API_KEY is not configured.", 503);
+  }
+
+  const url = new URL("/geocode/search", env.openRouteServiceBaseUrl);
+  url.searchParams.set("text", query);
+  url.searchParams.set("size", "5");
+  url.searchParams.set("boundary.country", "RU");
 
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), env.nominatimTimeoutMs);
+  const timeoutId = setTimeout(() => controller.abort(), env.openRouteServiceTimeoutMs);
 
   try {
     const response = await fetch(url.toString(), {
       method: "GET",
       headers: {
         accept: "application/json",
-        "user-agent": env.nominatimUserAgent
+        authorization: env.openRouteServiceApiKey
       },
       signal: controller.signal
     });
 
+    if (response.status === 429) {
+      throw serviceError("OpenRouteService временно ограничил запросы. Попробуйте позже.", 429);
+    }
+
     if (!response.ok) {
-      throw serviceError(`Nominatim responded with HTTP ${response.status}`, response.status);
+      throw serviceError(`OpenRouteService geocoding responded with HTTP ${response.status}`, response.status);
     }
 
-    const payload = (await response.json()) as NominatimSearchResult[];
+    const payload = (await response.json()) as OrsGeocodeResponse;
 
-    if (!Array.isArray(payload)) {
-      throw serviceError("Nominatim returned unexpected response", 502);
+    if (!Array.isArray(payload.features)) {
+      throw serviceError("OpenRouteService geocoding returned unexpected response.", 502);
     }
 
-    return payload
-      .map((item) => {
-        const lat = Number(item.lat);
-        const lon = Number(item.lon);
-
-        if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
-          return null;
-        }
-
-        const address = item.display_name?.trim() || item.name?.trim() || query;
-
-        return {
-          name: item.name?.trim() || address.split(",")[0]?.trim() || query,
-          address,
-          lat,
-          lon
-        };
-      })
+    return payload.features
+      .map((feature) => normalizeOrsFeature(feature, query))
       .filter((item): item is GeoSearchResult => item !== null);
   } catch (error) {
     if (error instanceof Error && error.name === "AbortError") {
-      throw serviceError("Nominatim request timed out", 504);
+      throw serviceError("OpenRouteService geocoding request timed out.", 504);
     }
 
     if (isHttpError(error)) {
       throw error;
     }
 
-    throw serviceError("Nominatim request failed", 502);
+    throw serviceError("OpenRouteService geocoding request failed.", 502);
   } finally {
     clearTimeout(timeoutId);
   }
+}
+
+function normalizeOrsFeature(feature: OrsGeocodeFeature, query: string): GeoSearchResult | null {
+  const coordinates = feature.geometry?.coordinates;
+
+  if (!Array.isArray(coordinates) || coordinates.length < 2) {
+    return null;
+  }
+
+  const [lonRaw, latRaw] = coordinates;
+  const lat = Number(latRaw);
+  const lon = Number(lonRaw);
+
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+    return null;
+  }
+
+  const address = normalizeString(feature.properties?.label) || normalizeString(feature.properties?.name) || query;
+  const name = normalizeString(feature.properties?.name) || address.split(",")[0]?.trim() || query;
+
+  return {
+    name,
+    address,
+    lat,
+    lon
+  };
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function normalizeString(value: unknown): string | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
 }
 
 function validationError(message: string): Error & { statusCode: number } {

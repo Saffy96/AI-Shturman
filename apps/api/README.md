@@ -45,9 +45,6 @@ GDEBENZ_TIMEOUT_MS=8000
 OPENROUTESERVICE_BASE_URL=https://api.openrouteservice.org
 OPENROUTESERVICE_API_KEY=your_openrouteservice_api_key
 OPENROUTESERVICE_TIMEOUT_MS=12000
-NOMINATIM_BASE_URL=https://nominatim.openstreetmap.org
-NOMINATIM_TIMEOUT_MS=8000
-NOMINATIM_USER_AGENT=AI-Shturman/0.1 (personal MVP; contact: your-email@example.com)
 CACHE_TTL_MS=60000
 ```
 
@@ -71,6 +68,8 @@ curl "http://localhost:4000/api/fuel/nearby?lat=55.796127&lon=49.106414&radiusKm
 curl "http://localhost:4000/api/geo/search?q=Казань"
 ```
 
+Uses OpenRouteService Geocoding with 24h in-memory cache and local presets for common cities.
+
 ### GET /api/fuel/route-real
 
 Builds a real driving route with OpenRouteService and then looks for stations within the selected corridor.
@@ -92,5 +91,5 @@ curl "http://localhost:4000/api/fuel/route?from=Казань&to=Дюртюли&f
 ## Notes
 
 - `gdebenz.ru` requests use in-memory cache to avoid unnecessary repeated calls.
-- Geocoding uses backend-only Nominatim requests with presets and long-lived cache.
+- Geocoding uses backend-only OpenRouteService Geocoding with presets and long-lived cache.
 - Long routes are split into smaller bbox chunks so one oversized request does not break the whole response.
