@@ -9,9 +9,39 @@ interface NominatimSearchResult {
   lon?: string;
 }
 
-const geoCache = new TtlCache<GeoSearchResult[]>(60 * 60 * 1000);
+const geoCache = new TtlCache<GeoSearchResult[]>(24 * 60 * 60 * 1000);
 let nominatimQueue: Promise<void> = Promise.resolve();
 let nextNominatimRequestAt = 0;
+
+const presetResults = new Map<string, GeoSearchResult>([
+  [
+    "казань",
+    {
+      name: "Казань",
+      address: "Казань, Республика Татарстан, Россия",
+      lat: 55.796127,
+      lon: 49.106414
+    }
+  ],
+  [
+    "москва",
+    {
+      name: "Москва",
+      address: "Москва, Россия",
+      lat: 55.755864,
+      lon: 37.617698
+    }
+  ],
+  [
+    "дюртюли",
+    {
+      name: "Дюртюли",
+      address: "Дюртюли, Республика Башкортостан, Россия",
+      lat: 55.484804,
+      lon: 54.868628
+    }
+  ]
+]);
 
 export async function searchGeo(query: string): Promise<GeoSearchResponse> {
   const normalizedQuery = query.trim();
@@ -21,6 +51,19 @@ export async function searchGeo(query: string): Promise<GeoSearchResponse> {
   }
 
   const cacheKey = normalizedQuery.toLowerCase();
+  const preset = presetResults.get(cacheKey);
+
+  if (preset) {
+    const results = [preset];
+    geoCache.set(cacheKey, results);
+
+    return {
+      ok: true,
+      query: normalizedQuery,
+      results
+    };
+  }
+
   const cached = geoCache.get(cacheKey);
 
   if (cached) {
@@ -100,7 +143,7 @@ async function fetchNominatim(query: string): Promise<GeoSearchResult[]> {
     });
 
     if (!response.ok) {
-      throw serviceError(`Nominatim responded with HTTP ${response.status}`, 502);
+      throw serviceError(`Nominatim responded with HTTP ${response.status}`, response.status);
     }
 
     const payload = (await response.json()) as NominatimSearchResult[];

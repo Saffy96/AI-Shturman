@@ -1,5 +1,5 @@
 import { buildNavigatorAdvice, hasRequestedFuel } from "@ai-shturman/shared";
-import { Dispatch, FormEvent, SetStateAction, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type Dispatch, type FormEvent, type SetStateAction } from "react";
 import { FiltersPanel } from "./components/FiltersPanel";
 import { Header } from "./components/Header";
 import { NavigatorAdviceCard } from "./components/NavigatorAdviceCard";
@@ -23,6 +23,7 @@ import type {
 } from "./types/fuel";
 
 const radiusOptions = [20, 50, 100] as const;
+const corridorOptions = [2, 5, 10, 20] as const;
 const fuelOptions: FuelType[] = ["92", "95", "98", "100", "ДТ"];
 const defaultFilters: StationFilters = {
   availability: "all",
@@ -37,6 +38,7 @@ const kazanLocation: Coordinates = {
 
 type LocationSource = "browser" | "kazan" | "manual";
 type FuelResponse = NearbyFuelResponse | RouteFuelResponse;
+type RouteRequestMode = "real" | "approx";
 
 interface SelectedLocation {
   coords: Coordinates;
@@ -58,12 +60,22 @@ export function App() {
   const [from, setFrom] = useStoredState("ai-shturman:from", "", normalizeString);
   const [to, setTo] = useStoredState("ai-shturman:to", "", normalizeString);
   const [selectedMode, setSelectedMode] = useStoredState<SearchMode>("ai-shturman:selectedMode", "nearby", normalizeMode);
-  const [radiusKm, setRadiusKm] = useStoredState<(typeof radiusOptions)[number]>("ai-shturman:radiusKm", 50, normalizeRadius);
+  const [radiusKm, setRadiusKm] = useStoredState<(typeof radiusOptions)[number]>(
+    "ai-shturman:radiusKm",
+    50,
+    normalizeRadius
+  );
+  const [corridorKm, setCorridorKm] = useStoredState<(typeof corridorOptions)[number]>(
+    "ai-shturman:corridorKm",
+    5,
+    normalizeCorridor
+  );
   const [fuel, setFuel] = useStoredState<FuelType>("ai-shturman:selectedFuel", "95", normalizeFuel);
   const [filters, setFilters] = useStoredState<StationFilters>("ai-shturman:filters", defaultFilters, normalizeFilters);
   const [data, setData] = useState<FuelResponse | null>(null);
   const [routePoints, setRoutePoints] = useState<RoutePoints | null>(null);
   const [routeWarning, setRouteWarning] = useState<string | null>(null);
+  const [routeFallbackHint, setRouteFallbackHint] = useState<string | null>(null);
   const [selectedLocation, setSelectedLocation] = useState<SelectedLocation | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isBuildingRoute, setIsBuildingRoute] = useState(false);
@@ -73,10 +85,13 @@ export function App() {
   const [manualLon, setManualLon] = useState("");
   const [manualError, setManualError] = useState<string | null>(null);
   const [isAdviceVisible, setIsAdviceVisible] = useState(false);
+  const routeBuildPromiseRef = useRef<Promise<RoutePoints> | null>(null);
 
   const geolocation = useGeolocation();
   const isOnline = useNetworkStatus();
-
+  const isRouteMode = selectedMode === "route";
+  const canBuildRoute = Boolean(from.trim() && to.trim());
+  const canRequestStations = isRouteMode ? Boolean(routePoints) : Boolean(selectedLocation);
   const allStations = data?.stations ?? [];
   const filteredStations = useMemo(() => applyStationFilters(allStations, filters, fuel), [allStations, filters, fuel]);
   const displaySummary = useMemo(() => buildClientSummary(allStations, fuel), [allStations, fuel]);
@@ -85,17 +100,11 @@ export function App() {
     shown: filteredStations.length
   };
 
-  const locationLabel = useMemo(() => {
-    if (!selectedLocation) {
-      return "Геопозиция не получена";
-    }
-
-    return `${selectedLocation.coords.lat.toFixed(6)}, ${selectedLocation.coords.lon.toFixed(6)}`;
-  }, [selectedLocation]);
-
+  const locationLabel = selectedLocation
+    ? `${selectedLocation.coords.lat.toFixed(6)}, ${selectedLocation.coords.lon.toFixed(6)}`
+    : "Геопозиция не получена";
   const sourceLabel = selectedLocation ? locationSourceLabels[selectedLocation.source] : "Не выбран";
-  const isRouteMode = selectedMode === "route";
-  const canRequestStations = isRouteMode ? Boolean(from.trim() && to.trim()) : Boolean(selectedLocation);
+  const routeData = data && "mode" in data ? data : null;
   const navigatorAdvice = useMemo(() => {
     if (!data) {
       return null;
@@ -149,7 +158,12 @@ export function App() {
   }
 
   async function handleBuildRoute() {
+    if (routeBuildPromiseRef.current || !canBuildRoute) {
+      return;
+    }
+
     setError(null);
+    setRouteFallbackHint(null);
 
     try {
       await buildRoutePoints();
@@ -159,14 +173,18 @@ export function App() {
   }
 
   async function handleCheckStations() {
-    await runFuelCheck();
+    await runFuelCheck("real");
+  }
+
+  async function handleUseApproximateRoute() {
+    await runFuelCheck("approx");
   }
 
   async function handleRefresh() {
-    await runFuelCheck();
+    await runFuelCheck(routeData?.mode === "route_bbox" ? "approx" : "real");
   }
 
-  async function runFuelCheck() {
+  async function runFuelCheck(requestMode: RouteRequestMode) {
     setError(null);
 
     if (!isOnline) {
@@ -175,7 +193,7 @@ export function App() {
     }
 
     if (!canRequestStations) {
-      setError(isRouteMode ? "Введите точки Откуда и Куда." : "Сначала получите геопозицию или выберите fallback.");
+      setError(isRouteMode ? "Сначала постройте маршрут." : "Сначала получите геопозицию или выберите fallback.");
       return;
     }
 
@@ -184,19 +202,26 @@ export function App() {
     try {
       if (isRouteMode) {
         if (!routePoints) {
-          await buildRoutePoints();
+          setError("Сначала нажмите «Построить маршрут», затем проверьте АЗС.");
+          return;
         }
 
         const response = await fetchRouteFuel({
           from,
           to,
-          corridorKm: radiusKm,
-          fuel
+          corridorKm,
+          fuel,
+          mode: requestMode,
+          fromLat: routePoints.from.lat,
+          fromLon: routePoints.from.lon,
+          toLat: routePoints.to.lat,
+          toLon: routePoints.to.lon
         });
 
         setData(response);
         setRoutePoints({ from: response.from, to: response.to });
-        setRouteWarning(response.warning);
+        setRouteWarning(response.warning ?? null);
+        setRouteFallbackHint(null);
       } else {
         if (!selectedLocation) {
           setError("Сначала получите геопозицию или выберите fallback.");
@@ -212,10 +237,15 @@ export function App() {
 
         setData(response);
         setRouteWarning(null);
+        setRouteFallbackHint(null);
       }
 
       setIsAdviceVisible(true);
     } catch (requestError) {
+      if (isRouteMode && requestMode === "real" && shouldOfferApproximateFallback(requestError)) {
+        setRouteFallbackHint("Если сервис реального маршрута недоступен, можно продолжить в приблизительном режиме по corridor bbox.");
+      }
+
       setError(getReadableError(requestError, isOnline));
     } finally {
       setIsLoading(false);
@@ -223,6 +253,10 @@ export function App() {
   }
 
   async function buildRoutePoints(): Promise<RoutePoints> {
+    if (routeBuildPromiseRef.current) {
+      return routeBuildPromiseRef.current;
+    }
+
     const fromQuery = from.trim();
     const toQuery = to.trim();
 
@@ -230,9 +264,8 @@ export function App() {
       throw new Error("Введите точки Откуда и Куда.");
     }
 
-    setIsBuildingRoute(true);
-
-    try {
+    const request = (async () => {
+      setIsBuildingRoute(true);
       const [fromResponse, toResponse] = await Promise.all([searchGeo(fromQuery), searchGeo(toQuery)]);
       const fromResult = fromResponse.results[0];
       const toResult = toResponse.results[0];
@@ -247,9 +280,17 @@ export function App() {
 
       const points = { from: fromResult, to: toResult };
       setRoutePoints(points);
-      setRouteWarning("Маршрут построен приблизительно по точкам А и Б.");
+      setRouteWarning("Маршрутные точки найдены. Дальше можно проверить АЗС вдоль реального маршрута.");
+      setRouteFallbackHint(null);
       return points;
+    })();
+
+    routeBuildPromiseRef.current = request;
+
+    try {
+      return await request;
     } finally {
+      routeBuildPromiseRef.current = null;
       setIsBuildingRoute(false);
     }
   }
@@ -258,6 +299,7 @@ export function App() {
     setSelectedLocation({ coords, source });
     setData(null);
     setRouteWarning(null);
+    setRouteFallbackHint(null);
     setIsAdviceVisible(false);
   }
 
@@ -265,6 +307,7 @@ export function App() {
     setSelectedMode(mode);
     setData(null);
     setRouteWarning(null);
+    setRouteFallbackHint(null);
     setIsAdviceVisible(false);
     setError(null);
   }
@@ -282,6 +325,7 @@ export function App() {
   function resetRouteIfNeeded() {
     setRoutePoints(null);
     setRouteWarning(null);
+    setRouteFallbackHint(null);
 
     if (selectedMode === "route") {
       setData(null);
@@ -308,7 +352,7 @@ export function App() {
           onBuildRoute={handleBuildRoute}
         />
 
-        {isRouteMode && routePoints ? <RouteInfo points={routePoints} /> : null}
+        {isRouteMode && routePoints ? <RouteInfo points={routePoints} route={routeData} stationCount={filteredStations.length} /> : null}
 
         <section className="rounded-2xl border border-road-100 bg-white p-4 shadow-soft">
           <div className="grid grid-cols-2 gap-3">
@@ -316,10 +360,14 @@ export function App() {
               <span className="text-sm font-bold text-slate-700">{isRouteMode ? "Коридор" : "Радиус"}</span>
               <select
                 className="min-h-12 rounded-xl border border-slate-200 bg-slate-50 px-3 text-lg font-black text-slate-950 outline-none focus:border-road-500 focus:bg-white"
-                value={radiusKm}
-                onChange={(event) => setRadiusKm(Number(event.target.value) as (typeof radiusOptions)[number])}
+                value={isRouteMode ? corridorKm : radiusKm}
+                onChange={(event) =>
+                  isRouteMode
+                    ? setCorridorKm(Number(event.target.value) as (typeof corridorOptions)[number])
+                    : setRadiusKm(Number(event.target.value) as (typeof radiusOptions)[number])
+                }
               >
-                {radiusOptions.map((option) => (
+                {(isRouteMode ? corridorOptions : radiusOptions).map((option) => (
                   <option key={option} value={option}>
                     {option} км
                   </option>
@@ -351,7 +399,7 @@ export function App() {
 
           {!canRequestStations ? (
             <div className="mt-3 rounded-xl bg-amber-50 px-4 py-3 text-sm font-bold text-amber-950">
-              {isRouteMode ? "Введите точки Откуда и Куда." : "Сначала получите геопозицию или выберите fallback."}
+              {isRouteMode ? "Сначала постройте маршрут по точкам А и Б." : "Сначала получите геопозицию или выберите fallback."}
             </div>
           ) : null}
 
@@ -406,14 +454,20 @@ export function App() {
 
         {error ? <Notice tone="danger" text={error} /> : null}
 
+        {routeFallbackHint && isRouteMode ? (
+          <RouteFallbackCard
+            text={routeFallbackHint}
+            isLoading={isLoading}
+            onUseApproximateRoute={handleUseApproximateRoute}
+          />
+        ) : null}
+
         {routeWarning && isRouteMode ? <Notice tone="neutral" text={routeWarning} /> : null}
 
         {isLoading ? <LoadingState /> : null}
 
         {data ? <SummaryCard summary={displaySummary} fuel={fuel} /> : null}
-
         {data ? <FiltersPanel filters={filters} onChange={setFilters} /> : null}
-
         {data ? <FilterSummaryCard summary={filteredSummary} /> : null}
 
         {data ? (
@@ -429,7 +483,6 @@ export function App() {
         {navigatorAdvice && isAdviceVisible ? <NavigatorAdviceCard advice={navigatorAdvice} /> : null}
 
         {data && data.stations.length === 0 && !isLoading ? <EmptyState /> : null}
-
         {data && data.stations.length > 0 && filteredStations.length === 0 && !isLoading ? <FilterEmptyState /> : null}
 
         {filteredStations.length > 0 ? (
@@ -485,15 +538,44 @@ function ModeButton({
   );
 }
 
-function RouteInfo({ points }: { points: RoutePoints }) {
+function RouteInfo({
+  points,
+  route,
+  stationCount
+}: {
+  points: RoutePoints;
+  route: RouteFuelResponse | null;
+  stationCount: number;
+}) {
   return (
     <section className="rounded-2xl border border-road-100 bg-white p-4 shadow-soft">
-      <div className="text-lg font-black text-slate-950">Маршрут построен</div>
+      <div className="text-lg font-black text-slate-950">
+        {route?.mode === "route_real" ? "Маршрут построен" : "Маршрутные точки выбраны"}
+      </div>
+
+      {route?.mode === "route_real" && route.route ? (
+        <div className="mt-3 grid grid-cols-2 gap-3 min-[420px]:grid-cols-4">
+          <MetricTile label="Дистанция" value={`${formatDistance(route.route.distanceKm)} км`} />
+          <MetricTile label="Время" value={`${route.route.durationMin} мин`} />
+          <MetricTile label="АЗС" value={String(stationCount)} />
+          <MetricTile label="Коридор" value={`${route.corridorKm} км`} />
+        </div>
+      ) : null}
+
       <div className="mt-3 grid gap-3">
         <RoutePoint label="Откуда" point={points.from} />
         <RoutePoint label="Куда" point={points.to} />
       </div>
     </section>
+  );
+}
+
+function MetricTile({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-xl bg-road-50 px-3 py-3 text-center">
+      <div className="text-lg font-black text-road-900">{value}</div>
+      <div className="mt-1 text-xs font-bold uppercase text-slate-500">{label}</div>
+    </div>
   );
 }
 
@@ -507,6 +589,31 @@ function RoutePoint({ label, point }: { label: string; point: GeoSearchResult })
         {point.lat.toFixed(6)}, {point.lon.toFixed(6)}
       </div>
     </div>
+  );
+}
+
+function RouteFallbackCard({
+  text,
+  isLoading,
+  onUseApproximateRoute
+}: {
+  text: string;
+  isLoading: boolean;
+  onUseApproximateRoute: () => void;
+}) {
+  return (
+    <section className="rounded-2xl border border-amber-200 bg-amber-50 p-4 shadow-soft">
+      <div className="text-lg font-black text-amber-950">Реальный маршрут временно недоступен</div>
+      <div className="mt-2 text-base font-semibold text-amber-900">{text}</div>
+      <button
+        className="mt-4 min-h-12 w-full rounded-xl bg-slate-950 px-4 text-base font-black text-white transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
+        type="button"
+        onClick={onUseApproximateRoute}
+        disabled={isLoading}
+      >
+        Использовать приблизительный режим
+      </button>
+    </section>
   );
 }
 
@@ -637,7 +744,7 @@ function LoadingState() {
   return (
     <div className="rounded-2xl border border-road-100 bg-white p-5 text-center shadow-soft">
       <div className="mx-auto h-10 w-10 animate-spin rounded-full border-4 border-road-100 border-t-road-500" />
-      <div className="mt-3 text-lg font-black text-road-900">Ищем АЗС рядом</div>
+      <div className="mt-3 text-lg font-black text-road-900">Ищем АЗС</div>
     </div>
   );
 }
@@ -647,7 +754,7 @@ function EmptyState() {
     <div className="rounded-2xl border border-slate-200 bg-white p-5 text-center shadow-soft">
       <div className="text-3xl">⛽</div>
       <div className="mt-2 text-lg font-black text-slate-950">АЗС не найдены</div>
-      <div className="mt-1 text-base font-semibold text-slate-600">Попробуйте увеличить радиус поиска.</div>
+      <div className="mt-1 text-base font-semibold text-slate-600">Попробуйте увеличить радиус или коридор поиска.</div>
     </div>
   );
 }
@@ -749,6 +856,10 @@ function hasAnyFuel(station: FuelStation): boolean {
   return station.status === "yes" || station.status === "low";
 }
 
+function shouldOfferApproximateFallback(error: unknown): boolean {
+  return error instanceof FuelApiError && (error.kind === "route-service" || error.kind === "rate-limited");
+}
+
 function getReadableError(error: unknown, isOnline: boolean): string {
   if (!isOnline) {
     return "Нет интернета. Проверьте связь и попробуйте снова.";
@@ -767,7 +878,15 @@ function getReadableError(error: unknown, isOnline: boolean): string {
       return "Backend вернул неожиданный ответ.";
     }
 
-    return "Backend недоступен. Проверьте, что apps/api запущен на localhost:4000.";
+    if (error.kind === "rate-limited") {
+      return error.message || "Геокодер временно ограничил запросы. Попробуйте позже или используйте город из пресетов.";
+    }
+
+    if (error.kind === "route-service") {
+      return error.message || "Сервис реального маршрута временно недоступен.";
+    }
+
+    return error.message || "Backend недоступен. Проверьте, что apps/api запущен на localhost:4000.";
   }
 
   if (error instanceof Error && error.message) {
@@ -821,6 +940,12 @@ function normalizeRadius(value: unknown): (typeof radiusOptions)[number] | null 
     : null;
 }
 
+function normalizeCorridor(value: unknown): (typeof corridorOptions)[number] | null {
+  return typeof value === "number" && corridorOptions.includes(value as (typeof corridorOptions)[number])
+    ? (value as (typeof corridorOptions)[number])
+    : null;
+}
+
 function normalizeFuel(value: unknown): FuelType | null {
   return typeof value === "string" && fuelOptions.includes(value as FuelType) ? (value as FuelType) : null;
 }
@@ -854,4 +979,12 @@ function isFreshnessFilter(value: unknown): value is StationFilters["freshness"]
 
 function isStatusFilter(value: unknown): value is StationFilters["status"] {
   return value === "all" || value === "yes" || value === "low" || value === "no" || value === "unknown";
+}
+
+function formatDistance(value: number): string {
+  if (value < 10) {
+    return value.toFixed(1);
+  }
+
+  return Math.round(value).toString();
 }

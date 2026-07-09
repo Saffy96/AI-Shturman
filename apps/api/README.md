@@ -1,6 +1,6 @@
 # AI Shturman API
 
-Backend-proxy for the AI Shturman MVP. It receives user coordinates, requests `gdebenz.ru`, normalizes fuel station data, and returns a frontend-friendly response.
+Backend proxy for the AI Shturman MVP. It receives user coordinates or route points, requests `gdebenz.ru`, optionally builds a real driving route via OpenRouteService, normalizes station data, and returns a frontend-friendly response.
 
 ## Requirements
 
@@ -19,9 +19,9 @@ cp apps/api/.env.example apps/api/.env
 From the repository root:
 
 ```bash
-npm run dev
+npm run dev:api
 npm run build
-npm run start
+npm run start:api
 npm run lint
 ```
 
@@ -39,8 +39,15 @@ npm run lint -w @ai-shturman/api
 ```bash
 PORT=4000
 FRONTEND_ORIGIN=http://localhost:5173
+NODE_ENV=development
 GDEBENZ_BASE_URL=https://gdebenz.ru/api
 GDEBENZ_TIMEOUT_MS=8000
+OPENROUTESERVICE_BASE_URL=https://api.openrouteservice.org
+OPENROUTESERVICE_API_KEY=your_openrouteservice_api_key
+OPENROUTESERVICE_TIMEOUT_MS=12000
+NOMINATIM_BASE_URL=https://nominatim.openstreetmap.org
+NOMINATIM_TIMEOUT_MS=8000
+NOMINATIM_USER_AGENT=AI-Shturman/0.1 (personal MVP; contact: your-email@example.com)
 CACHE_TTL_MS=60000
 ```
 
@@ -54,31 +61,36 @@ CACHE_TTL_MS=60000
 
 ### GET /api/fuel/nearby
 
-Example:
+```bash
+curl "http://localhost:4000/api/fuel/nearby?lat=55.796127&lon=49.106414&radiusKm=50&fuel=95"
+```
+
+### GET /api/geo/search
 
 ```bash
-curl "http://localhost:4000/api/fuel/nearby?lat=55.75&lon=37.85&radiusKm=50&fuel=95"
+curl "http://localhost:4000/api/geo/search?q=Казань"
 ```
 
-Response shape:
+### GET /api/fuel/route-real
 
-```json
-{
-  "ok": true,
-  "source": "gdebenz",
-  "updatedAt": "2026-07-09T19:00:00.000Z",
-  "radiusKm": 50,
-  "userLocation": { "lat": 55.75, "lon": 37.85 },
-  "stations": [],
-  "summary": {
-    "total": 0,
-    "withFuel": 0,
-    "withRequestedFuel": 0,
-    "withQueue": 0,
-    "withoutFuel": 0,
-    "unknown": 0
-  }
-}
+Builds a real driving route with OpenRouteService and then looks for stations within the selected corridor.
+
+```bash
+curl "http://localhost:4000/api/fuel/route-real?from=Казань&to=Дюртюли&fuel=95&corridorKm=5"
 ```
 
-The API keeps a 60 second in-memory cache by rounded coordinates and radius, so repeated frontend refreshes do not hit `gdebenz.ru` unnecessarily.
+If OpenRouteService is unavailable or the API key is missing, the frontend can fall back to:
+
+### GET /api/fuel/route
+
+Approximate route search using segmented bbox requests to `gdebenz.ru`.
+
+```bash
+curl "http://localhost:4000/api/fuel/route?from=Казань&to=Дюртюли&fuel=95&corridorKm=5"
+```
+
+## Notes
+
+- `gdebenz.ru` requests use in-memory cache to avoid unnecessary repeated calls.
+- Geocoding uses backend-only Nominatim requests with presets and long-lived cache.
+- Long routes are split into smaller bbox chunks so one oversized request does not break the whole response.

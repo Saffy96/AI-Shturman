@@ -13,13 +13,13 @@ npm install
 Start the backend:
 
 ```bash
-npm run dev -w @ai-shturman/api
+npm run dev:api
 ```
 
 Start the frontend:
 
 ```bash
-npm run dev -w @ai-shturman/web
+npm run dev:web
 ```
 
 Open:
@@ -36,12 +36,19 @@ Create `apps/web/.env` from `apps/web/.env.example`:
 VITE_API_BASE_URL=http://localhost:4000
 ```
 
-The React app calls only this backend API. It does not call `gdebenz.ru` directly.
+The React app calls only this backend API. It does not call `gdebenz.ru`, Nominatim, or OpenRouteService directly.
+
+## Route Mode
+
+- Enter `Откуда` and `Куда`.
+- Click `Построить маршрут`.
+- Then click `Проверить АЗС по маршруту`.
+- If the real route service is temporarily unavailable, the UI offers approximate fallback mode.
 
 ## Build
 
 ```bash
-npm run build -w @ai-shturman/web
+npm run build:web
 ```
 
 From the repository root:
@@ -55,13 +62,10 @@ npm run lint
 
 For iPhone, open the deployed HTTPS URL in Safari, tap Share, then choose Add to Home Screen.
 
-Localhost is useful for development, but iPhone installation needs a reachable HTTPS URL or local network setup.
-
-## MVP limits
+## MVP Limits
 
 - No map.
-- No route building.
+- Route mode uses backend route/corridor search and not full turn-by-turn navigation.
 - No auth.
 - No database.
-- No direct frontend calls to `gdebenz.ru`.
-- Route fields are saved only on the current screen and are used as trip context.
+- No direct frontend calls to third-party APIs.

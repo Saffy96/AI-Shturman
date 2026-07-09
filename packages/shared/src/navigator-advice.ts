@@ -57,7 +57,9 @@ export function buildNavigatorAdvice(
     return {
       level: "good",
       title: "Можно заехать",
-      message: `Ближайшая подходящая АЗС с ${selectedFuel} — ${getStationTitle(station)} через ${formatDistance(station.distanceKm)} км. Очередь не отмечена. Данные: ${station.freshnessLabel}. Рекомендация: можно заехать.`,
+      message: `Ближайшая подходящая АЗС с ${selectedFuel} — ${getStationTitle(station)} через ${formatDistance(
+        getPrimaryDistance(station)
+      )} км. Очередь не отмечена. Данные: ${station.freshnessLabel}. Рекомендация: можно заехать.`,
       stationId: station.id
     };
   }
@@ -70,7 +72,9 @@ export function buildNavigatorAdvice(
     return {
       level: "warning",
       title: "Есть очередь",
-      message: `АЗС с ${selectedFuel} найдена, но есть отметка об очереди. Ближайшая: ${getStationTitle(station)}, ${formatDistance(station.distanceKm)} км. Лучше посмотреть альтернативы.`,
+      message: `АЗС с ${selectedFuel} найдена, но есть отметка об очереди. Ближайшая: ${getStationTitle(
+        station
+      )}, ${formatDistance(getPrimaryDistance(station))} км. Лучше посмотреть альтернативы.`,
       stationId: station.id
     };
   }
@@ -99,9 +103,12 @@ function compareCandidates(left: StationCandidate, right: StationCandidate): num
     compareBoolean(right.hasSelectedFuel, left.hasSelectedFuel) ||
     compareBoolean(right.station.status === "yes", left.station.status === "yes") ||
     compareBoolean(!right.station.hasQueue, !left.station.hasQueue) ||
-    compareBoolean(right.station.freshnessLabel === "свежие данные", left.station.freshnessLabel === "свежие данные") ||
+    compareBoolean(
+      right.station.freshnessLabel === "свежие данные",
+      left.station.freshnessLabel === "свежие данные"
+    ) ||
     compareNumber(getConfidence(right.station), getConfidence(left.station)) ||
-    compareNumber(getDistance(left.station), getDistance(right.station))
+    compareNumber(getPrimaryDistance(left.station), getPrimaryDistance(right.station))
   );
 }
 
@@ -117,16 +124,16 @@ function getConfidence(station: NormalizedFuelStation): number {
   return station.confidence ?? -1;
 }
 
-function getDistance(station: NormalizedFuelStation): number {
-  return station.distanceKm ?? Number.POSITIVE_INFINITY;
+function getPrimaryDistance(station: NormalizedFuelStation): number {
+  return station.distanceFromStartKm ?? station.distanceKm ?? Number.POSITIVE_INFINITY;
 }
 
 function getStationTitle(station: NormalizedFuelStation): string {
   return station.brand || station.name || station.address || "АЗС";
 }
 
-function formatDistance(distanceKm: number | null): string {
-  if (distanceKm == null || !Number.isFinite(distanceKm)) {
+function formatDistance(distanceKm: number): string {
+  if (!Number.isFinite(distanceKm)) {
     return "неизвестно";
   }
 

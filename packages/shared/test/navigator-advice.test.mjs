@@ -22,6 +22,9 @@ function station(overrides = {}) {
     freshnessLabel: "свежие данные",
     recommendation: "Можно заехать",
     rawDetail: null,
+    distanceFromRouteKm: null,
+    distanceFromStartKm: null,
+    routePositionLabel: null,
     ...overrides
   };
 }
@@ -38,5 +41,29 @@ assert.equal(buildNavigatorAdvice([station({ hasQueue: true })], "95").level, "w
 assert.equal(buildNavigatorAdvice([station({ status: "low" })], "95").title, "Топлива мало");
 assert.equal(buildNavigatorAdvice([station({ fuels: ["92"], hasRequestedFuel: false })], "95").level, "danger");
 assert.equal(buildNavigatorAdvice([], "95").level, "unknown");
+
+const routeAdvice = buildNavigatorAdvice(
+  [
+    station({
+      id: "osm:queue",
+      distanceKm: 3,
+      distanceFromStartKm: 12,
+      hasQueue: true,
+      queueLabel: "Есть очередь"
+    }),
+    station({
+      id: "osm:next",
+      brand: "Татнефть",
+      distanceKm: 8,
+      distanceFromStartKm: 19
+    })
+  ],
+  "95"
+);
+
+assert.equal(routeAdvice.level, "good");
+assert.equal(routeAdvice.stationId, "osm:next");
+assert.match(routeAdvice.message, /Татнефть/);
+assert.match(routeAdvice.message, /19 км/);
 
 console.log("navigator advice cases passed");

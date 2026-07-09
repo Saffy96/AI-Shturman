@@ -22,9 +22,7 @@ export function NavigatorAdviceCard({ advice }: NavigatorAdviceCardProps) {
   return (
     <section className={`rounded-2xl border p-4 shadow-soft ${levelStyles[advice.level]}`}>
       <div className="flex items-start gap-3">
-        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white text-2xl shadow-sm">
-          🤖
-        </div>
+        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white text-2xl shadow-sm">🤖</div>
         <div className="min-w-0">
           <div className="text-xs font-black uppercase opacity-75">{levelMarkers[advice.level]}</div>
           <h2 className="mt-1 text-xl font-black">{advice.title}</h2>

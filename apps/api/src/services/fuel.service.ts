@@ -1,14 +1,19 @@
 import {
+  buildRouteBBox,
   getFreshnessLabel,
   getQueueLabel,
   getRecommendation,
   getStatusLabel,
   hasRequestedFuel,
   detailMentionsQueue,
+  haversineDistanceKm,
   normalizeStationStatus,
   parseFuels,
+  projectPointOnRoute,
   toNumberOrNull,
+  type Coordinates,
   type FuelSummary,
+  type GeoSearchResult,
   type NearbyFuelResponse,
   type NormalizedFuelStation,
   type RouteFuelResponse
@@ -16,6 +21,7 @@ import {
 import {
   getStationsByBBox,
   getNearbyStations,
+  GdebenzClientError,
   type GdebenzBBoxStationRaw,
   type GdebenzNearbyResponse,
   type GdebenzStationRaw
@@ -23,6 +29,7 @@ import {
 import { env } from "../config/env.js";
 import { TtlCache } from "../utils/ttl-cache.js";
 import { getFirstGeoResult } from "./geo.service.js";
+import { getDrivingRoute } from "./openroute.service.js";
 
 interface NearbyFuelParams {
   lat: number;
@@ -36,17 +43,35 @@ interface RouteFuelParams {
   to: string;
   fuel: string;
   corridorKm: number;
+  fromLat?: number;
+  fromLon?: number;
+  toLat?: number;
+  toLon?: number;
+}
+
+interface ChunkFetchResult {
+  chunksProcessed: number;
+  rawStations: GdebenzBBoxStationRaw[];
+  warnings: string[];
+}
+
+interface StationRouteMetrics {
+  distanceFromRouteKm?: number | null;
+  distanceFromStartKm?: number | null;
+  routePositionLabel?: string | null;
 }
 
 const nearbyCache = new TtlCache<GdebenzNearbyResponse>(env.cacheTtlMs);
 const bboxCache = new TtlCache<GdebenzBBoxStationRaw[]>(env.cacheTtlMs);
+const MAX_ROUTE_CHUNKS = 20;
+const MAX_CHUNK_SPLIT_DEPTH = 2;
 
 export async function getNearbyFuel(params: NearbyFuelParams): Promise<NearbyFuelResponse> {
   const rawResponse = await getCachedNearbyStations(params);
   const stations = rawResponse.stations
     .map((station) => normalizeStation(station, params.fuel))
     .filter((station): station is NormalizedFuelStation => station !== null)
-    .sort((a, b) => (a.distanceKm ?? Number.POSITIVE_INFINITY) - (b.distanceKm ?? Number.POSITIVE_INFINITY));
+    .sort((left, right) => (left.distanceKm ?? Number.POSITIVE_INFINITY) - (right.distanceKm ?? Number.POSITIVE_INFINITY));
 
   return {
     ok: true,
@@ -63,14 +88,20 @@ export async function getNearbyFuel(params: NearbyFuelParams): Promise<NearbyFue
 }
 
 export async function getRouteFuel(params: RouteFuelParams): Promise<RouteFuelResponse> {
-  const [from, to] = await Promise.all([getFirstGeoResult(params.from), getFirstGeoResult(params.to)]);
-  const bbox = buildRouteBBox(from, to, params.corridorKm);
-  const rawStations = await getCachedBBoxStations(bbox);
+  const [from, to] = await resolveRoutePoints(params);
+  const routeFetch = await fetchApproximateRouteStations(from, to, params.corridorKm);
 
-  const stations = rawStations
-    .map((station) => normalizeStation(station, params.fuel, calculateDistanceKm(from, station)))
+  const stations = routeFetch.rawStations
+    .map((station) => {
+      const coordinates = toCoordinates(station);
+      return normalizeStation(
+        station,
+        params.fuel,
+        coordinates ? haversineDistanceKm(from, coordinates) : null
+      );
+    })
     .filter((station): station is NormalizedFuelStation => station !== null)
-    .sort((a, b) => (a.distanceKm ?? Number.POSITIVE_INFINITY) - (b.distanceKm ?? Number.POSITIVE_INFINITY));
+    .sort((left, right) => (left.distanceKm ?? Number.POSITIVE_INFINITY) - (right.distanceKm ?? Number.POSITIVE_INFINITY));
 
   return {
     ok: true,
@@ -82,12 +113,88 @@ export async function getRouteFuel(params: RouteFuelParams): Promise<RouteFuelRe
     corridorKm: params.corridorKm,
     stations,
     summary: buildSummary(stations),
-    warning: "Маршрут считается приблизительно по прямоугольной области, не по дорожной линии."
+    warning: [
+      "Маршрут считается приблизительно по прямоугольным сегментам, не по дорожной линии.",
+      ...routeFetch.warnings
+    ].join(" ")
   };
 }
 
+export async function getRouteFuelReal(params: RouteFuelParams): Promise<RouteFuelResponse> {
+  const [from, to] = await resolveRoutePoints(params);
+  const route = await getDrivingRoute(from, to);
+  const routeFetch = await fetchRouteStationsAlongGeometry(route.geometry, params.corridorKm);
+
+  const stations = routeFetch.rawStations
+    .map((station) => {
+      const coordinates = toCoordinates(station);
+
+      if (!coordinates) {
+        return null;
+      }
+
+      const projected = projectPointOnRoute(coordinates, route.geometry);
+
+      if (!projected || projected.distanceFromRouteKm > params.corridorKm + 0.05) {
+        return null;
+      }
+
+      return normalizeStation(station, params.fuel, projected.distanceFromStartKm, {
+        distanceFromRouteKm: roundTo(projected.distanceFromRouteKm, 1),
+        distanceFromStartKm: roundTo(projected.distanceFromStartKm, 1),
+        routePositionLabel: getRoutePositionLabel(projected.distanceFromRouteKm)
+      });
+    })
+    .filter((station): station is NormalizedFuelStation => station !== null)
+    .sort(compareRouteStations);
+
+  return {
+    ok: true,
+    mode: "route_real",
+    source: "gdebenz",
+    updatedAt: new Date().toISOString(),
+    from,
+    to,
+    corridorKm: params.corridorKm,
+    route: {
+      distanceKm: route.distanceKm,
+      durationMin: route.durationMin,
+      geometryPointsCount: route.geometry.length
+    },
+    stations,
+    summary: buildSummary(stations),
+    ...(routeFetch.warnings.length > 0 ? { warning: routeFetch.warnings.join(" ") } : {})
+  };
+}
+
+async function resolveRoutePoints(params: RouteFuelParams): Promise<[GeoSearchResult, GeoSearchResult]> {
+  if (
+    params.fromLat != null &&
+    params.fromLon != null &&
+    params.toLat != null &&
+    params.toLon != null
+  ) {
+    return [
+      {
+        name: params.from,
+        address: params.from,
+        lat: params.fromLat,
+        lon: params.fromLon
+      },
+      {
+        name: params.to,
+        address: params.to,
+        lat: params.toLat,
+        lon: params.toLon
+      }
+    ];
+  }
+
+  return Promise.all([getFirstGeoResult(params.from), getFirstGeoResult(params.to)]);
+}
+
 async function getCachedNearbyStations(params: NearbyFuelParams): Promise<GdebenzNearbyResponse> {
-  const cacheKey = makeNearbyCacheKey(params.lat, params.lon, params.radiusKm);
+  const cacheKey = `${params.lat.toFixed(3)}:${params.lon.toFixed(3)}:${params.radiusKm}`;
   const cached = nearbyCache.get(cacheKey);
 
   if (cached) {
@@ -132,15 +239,113 @@ async function getCachedBBoxStations(params: {
   return response;
 }
 
+async function fetchApproximateRouteStations(
+  from: Coordinates,
+  to: Coordinates,
+  corridorKm: number
+): Promise<ChunkFetchResult> {
+  const totalDistanceKm = haversineDistanceKm(from, to);
+  const chunkCount = getChunkCount(totalDistanceKm, corridorKm);
+  const chunks = buildStraightLineChunks(from, to, chunkCount);
+  const warnings: string[] = [];
+  const rawStations: GdebenzBBoxStationRaw[] = [];
+
+  for (let index = 0; index < chunks.length; index += 1) {
+    const result = await fetchGeometryChunkStations(chunks[index], corridorKm, index + 1, MAX_CHUNK_SPLIT_DEPTH, "route-bbox");
+    rawStations.push(...result.rawStations);
+    warnings.push(...result.warnings);
+  }
+
+  return {
+    chunksProcessed: chunks.length,
+    rawStations: dedupeStations(rawStations),
+    warnings
+  };
+}
+
+async function fetchRouteStationsAlongGeometry(
+  routeGeometry: Coordinates[],
+  corridorKm: number
+): Promise<ChunkFetchResult> {
+  const totalDistanceKm = getGeometryLengthKm(routeGeometry);
+  const chunks = buildGeometryChunks(routeGeometry, totalDistanceKm, corridorKm);
+  const warnings: string[] = [];
+  const rawStations: GdebenzBBoxStationRaw[] = [];
+
+  for (let index = 0; index < chunks.length; index += 1) {
+    const result = await fetchGeometryChunkStations(chunks[index], corridorKm, index + 1, MAX_CHUNK_SPLIT_DEPTH, "route-real");
+    rawStations.push(...result.rawStations);
+    warnings.push(...result.warnings);
+  }
+
+  const uniqueStations = dedupeStations(rawStations);
+  console.log(`[route-real] chunks: ${chunks.length}, stations raw: ${rawStations.length}, unique: ${uniqueStations.length}`);
+
+  return {
+    chunksProcessed: chunks.length,
+    rawStations: uniqueStations,
+    warnings
+  };
+}
+
+async function fetchGeometryChunkStations(
+  chunkGeometry: Coordinates[],
+  corridorKm: number,
+  chunkIndex: number,
+  splitDepthRemaining: number,
+  warningPrefix: "route-real" | "route-bbox"
+): Promise<ChunkFetchResult> {
+  const bbox = buildRouteBBox(chunkGeometry, corridorKm);
+
+  try {
+    const stations = await getCachedBBoxStations(bbox);
+    return {
+      chunksProcessed: 1,
+      rawStations: stations,
+      warnings: []
+    };
+  } catch (error) {
+    if (isBBoxTooLargeError(error) && splitDepthRemaining > 0 && chunkGeometry.length > 2) {
+      const [left, right] = splitGeometryChunk(chunkGeometry);
+      const leftResult = await fetchGeometryChunkStations(left, corridorKm, chunkIndex, splitDepthRemaining - 1, warningPrefix);
+      const rightResult = await fetchGeometryChunkStations(right, corridorKm, chunkIndex, splitDepthRemaining - 1, warningPrefix);
+
+      return {
+        chunksProcessed: leftResult.chunksProcessed + rightResult.chunksProcessed,
+        rawStations: [...leftResult.rawStations, ...rightResult.rawStations],
+        warnings: [...leftResult.warnings, ...rightResult.warnings]
+      };
+    }
+
+    if (isBBoxTooLargeError(error)) {
+      return {
+        chunksProcessed: 1,
+        rawStations: [],
+        warnings: [`Часть маршрута пропущена: chunk ${chunkIndex} все еще слишком большой для gdebenz.`]
+      };
+    }
+
+    if (error instanceof GdebenzClientError) {
+      return {
+        chunksProcessed: 1,
+        rawStations: [],
+        warnings: [`Часть маршрута пропущена: chunk ${chunkIndex} не загрузился (${warningPrefix}: ${error.message}).`]
+      };
+    }
+
+    throw error;
+  }
+}
+
 function normalizeStation(
   raw: GdebenzStationRaw | GdebenzBBoxStationRaw,
   requestedFuel: string,
-  fallbackDistanceKm?: number | null
+  fallbackDistanceKm?: number | null,
+  routeMetrics?: StationRouteMetrics
 ): NormalizedFuelStation | null {
-  const lat = toNumberOrNull(raw.lat);
-  const lon = toNumberOrNull(raw.lon);
+  const coordinates = toCoordinates(raw);
 
-  if (lat == null || lon == null) {
+  if (!coordinates) {
     return null;
   }
 
@@ -157,8 +362,8 @@ function normalizeStation(
     brand: normalizeString(raw.brand),
     name: normalizeString(raw.name),
     address: normalizeString(raw.addr),
-    lat,
-    lon,
+    lat: coordinates.lat,
+    lon: coordinates.lon,
     distanceKm: toNumberOrNull(getUnknownField(raw, "distance_km")) ?? fallbackDistanceKm ?? null,
     status,
     statusLabel: getStatusLabel(status),
@@ -176,7 +381,10 @@ function normalizeStation(
       hasQueue,
       freshnessLabel
     }),
-    rawDetail: normalizeString(detail)
+    rawDetail: normalizeString(detail),
+    distanceFromRouteKm: routeMetrics?.distanceFromRouteKm ?? null,
+    distanceFromStartKm: routeMetrics?.distanceFromStartKm ?? null,
+    routePositionLabel: routeMetrics?.routePositionLabel ?? null
   };
 }
 
@@ -218,57 +426,126 @@ function buildSummary(stations: NormalizedFuelStation[]): FuelSummary {
   );
 }
 
-function makeNearbyCacheKey(lat: number, lon: number, radiusKm: number): string {
-  return `${lat.toFixed(3)}:${lon.toFixed(3)}:${radiusKm}`;
+function buildStraightLineChunks(from: Coordinates, to: Coordinates, chunkCount: number): Coordinates[][] {
+  const chunks: Coordinates[][] = [];
+
+  for (let index = 0; index < chunkCount; index += 1) {
+    const startFactor = index / chunkCount;
+    const endFactor = (index + 1) / chunkCount;
+
+    chunks.push([interpolatePoint(from, to, startFactor), interpolatePoint(from, to, endFactor)]);
+  }
+
+  return chunks;
 }
 
-function buildRouteBBox(
-  from: { lat: number; lon: number },
-  to: { lat: number; lon: number },
-  corridorKm: number
-): { lat1: number; lon1: number; lat2: number; lon2: number } {
-  const avgLatRad = (((from.lat + to.lat) / 2) * Math.PI) / 180;
-  const latBuffer = corridorKm / 111;
-  const lonBuffer = corridorKm / (111 * Math.max(Math.cos(avgLatRad), 0.2));
+function buildGeometryChunks(routeGeometry: Coordinates[], totalDistanceKm: number, corridorKm: number): Coordinates[][] {
+  if (routeGeometry.length <= 2) {
+    return [routeGeometry];
+  }
 
+  const targetChunkLengthKm = Math.max(Math.ceil(totalDistanceKm / MAX_ROUTE_CHUNKS), corridorKm * 6, 35);
+  const chunks: Coordinates[][] = [];
+  let currentChunk: Coordinates[] = [routeGeometry[0]];
+  let currentDistanceKm = 0;
+
+  for (let index = 1; index < routeGeometry.length; index += 1) {
+    const previous = routeGeometry[index - 1];
+    const point = routeGeometry[index];
+    currentChunk.push(point);
+    currentDistanceKm += haversineDistanceKm(previous, point);
+
+    const canCloseChunk = chunks.length < MAX_ROUTE_CHUNKS - 1 && currentChunk.length >= 2;
+
+    if (canCloseChunk && currentDistanceKm >= targetChunkLengthKm) {
+      chunks.push(currentChunk);
+      currentChunk = [point];
+      currentDistanceKm = 0;
+    }
+  }
+
+  if (currentChunk.length === 1 && chunks.length > 0) {
+    chunks[chunks.length - 1].push(currentChunk[0]);
+  } else if (currentChunk.length >= 2) {
+    chunks.push(currentChunk);
+  }
+
+  return chunks.filter((chunk) => chunk.length >= 2);
+}
+
+function splitGeometryChunk(chunkGeometry: Coordinates[]): [Coordinates[], Coordinates[]] {
+  const middleIndex = Math.floor(chunkGeometry.length / 2);
+  const left = chunkGeometry.slice(0, middleIndex + 1);
+  const right = chunkGeometry.slice(middleIndex);
+
+  return [left, right];
+}
+
+function compareRouteStations(left: NormalizedFuelStation, right: NormalizedFuelStation): number {
+  return (
+    (left.distanceFromStartKm ?? left.distanceKm ?? Number.POSITIVE_INFINITY) -
+      (right.distanceFromStartKm ?? right.distanceKm ?? Number.POSITIVE_INFINITY) ||
+    (left.distanceFromRouteKm ?? Number.POSITIVE_INFINITY) - (right.distanceFromRouteKm ?? Number.POSITIVE_INFINITY)
+  );
+}
+
+function getChunkCount(totalDistanceKm: number, corridorKm: number): number {
+  const targetChunkLengthKm = Math.max(80, corridorKm * 2);
+  const requestedChunks = Math.ceil(totalDistanceKm / targetChunkLengthKm);
+  return clamp(Math.max(1, requestedChunks), 1, MAX_ROUTE_CHUNKS);
+}
+
+function getGeometryLengthKm(routeGeometry: Coordinates[]): number {
+  let totalKm = 0;
+
+  for (let index = 1; index < routeGeometry.length; index += 1) {
+    totalKm += haversineDistanceKm(routeGeometry[index - 1], routeGeometry[index]);
+  }
+
+  return totalKm;
+}
+
+function getRoutePositionLabel(distanceFromRouteKm: number): string {
+  if (distanceFromRouteKm < 0.3) {
+    return "Прямо по маршруту";
+  }
+
+  return `Отклонение от маршрута: ${formatDistanceKm(distanceFromRouteKm)} км`;
+}
+
+function formatDistanceKm(value: number): string {
+  if (value < 10) {
+    return value.toFixed(1);
+  }
+
+  return String(Math.round(value));
+}
+
+function interpolatePoint(from: Coordinates, to: Coordinates, factor: number): Coordinates {
   return {
-    lat1: clamp(Math.min(from.lat, to.lat) - latBuffer, -90, 90),
-    lon1: clamp(Math.min(from.lon, to.lon) - lonBuffer, -180, 180),
-    lat2: clamp(Math.max(from.lat, to.lat) + latBuffer, -90, 90),
-    lon2: clamp(Math.max(from.lon, to.lon) + lonBuffer, -180, 180)
+    lat: from.lat + (to.lat - from.lat) * factor,
+    lon: from.lon + (to.lon - from.lon) * factor
   };
 }
 
-function calculateDistanceKm(
-  from: { lat: number; lon: number },
-  station: { lat: number | string; lon: number | string }
-): number | null {
-  const lat = toNumberOrNull(station.lat);
-  const lon = toNumberOrNull(station.lon);
+function toCoordinates(value: { lat: unknown; lon: unknown }): Coordinates | null {
+  const lat = toNumberOrNull(value.lat);
+  const lon = toNumberOrNull(value.lon);
 
   if (lat == null || lon == null) {
     return null;
   }
 
-  const earthRadiusKm = 6371;
-  const dLat = toRadians(lat - from.lat);
-  const dLon = toRadians(lon - from.lon);
-  const fromLat = toRadians(from.lat);
-  const stationLat = toRadians(lat);
-  const a =
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos(fromLat) * Math.cos(stationLat) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-
-  return Math.round(earthRadiusKm * c * 10) / 10;
+  return { lat, lon };
 }
 
-function toRadians(value: number): number {
-  return (value * Math.PI) / 180;
-}
+function normalizeString(value: unknown): string | null {
+  if (typeof value !== "string") {
+    return null;
+  }
 
-function clamp(value: number, min: number, max: number): number {
-  return Math.min(Math.max(value, min), max);
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
 }
 
 function getStringField(raw: Record<string, unknown>, key: string): string | null {
@@ -280,11 +557,30 @@ function getUnknownField(raw: Record<string, unknown>, key: string): unknown {
   return raw[key];
 }
 
-function normalizeString(value: unknown): string | null {
-  if (typeof value !== "string") {
-    return null;
+function dedupeStations(stations: GdebenzBBoxStationRaw[]): GdebenzBBoxStationRaw[] {
+  const map = new Map<string, GdebenzBBoxStationRaw>();
+
+  for (const station of stations) {
+    map.set(String(station.osm_id), station);
   }
 
-  const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : null;
+  return [...map.values()];
+}
+
+function roundTo(value: number, digits: number): number {
+  const factor = 10 ** digits;
+  return Math.round(value * factor) / factor;
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(Math.max(value, min), max);
+}
+
+function isBBoxTooLargeError(error: unknown): boolean {
+  return (
+    error instanceof GdebenzClientError &&
+    error.statusCode === 400 &&
+    typeof error.cause === "string" &&
+    error.cause.includes("bbox_too_large")
+  );
 }

@@ -3,7 +3,8 @@ import type {
   FuelSummary as SharedFuelSummary,
   GeoSearchResponse as SharedGeoSearchResponse,
   GeoSearchResult as SharedGeoSearchResult,
-  NormalizedFuelStation
+  NormalizedFuelStation,
+  RouteFuelResponse as SharedRouteFuelResponse
 } from "@ai-shturman/shared";
 
 export type FuelType = "92" | "95" | "98" | "100" | "ДТ";
@@ -13,7 +14,6 @@ export type FuelSummary = SharedFuelSummary;
 export type FuelStation = NormalizedFuelStation;
 export type GeoSearchResult = SharedGeoSearchResult;
 export type GeoSearchResponse = SharedGeoSearchResponse;
-
 export type SearchMode = "nearby" | "route";
 export type AvailabilityFilter = "all" | "withFuel" | "withSelectedFuel" | "excludeNoFuel";
 export type QueueFilter = "all" | "withoutQueue" | "onlyQueue";
@@ -49,22 +49,16 @@ export interface NearbyFuelParams {
   fuel: FuelType;
 }
 
-export interface RouteFuelResponse {
-  ok: true;
-  mode: "route_bbox";
-  source: "gdebenz";
-  updatedAt: string;
-  from: GeoSearchResult;
-  to: GeoSearchResult;
-  corridorKm: number;
-  stations: FuelStation[];
-  summary: FuelSummary;
-  warning: string;
-}
+export type RouteFuelResponse = SharedRouteFuelResponse;
 
 export interface RouteFuelParams {
   from: string;
   to: string;
   corridorKm: number;
   fuel: FuelType;
+  mode?: "real" | "approx";
+  fromLat?: number;
+  fromLon?: number;
+  toLat?: number;
+  toLon?: number;
 }

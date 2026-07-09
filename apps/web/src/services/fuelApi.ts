@@ -9,12 +9,18 @@ import type {
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:4000";
 const REQUEST_TIMEOUT_MS = 12_000;
 
-export type FuelApiErrorKind = "backend-unavailable" | "timeout" | "bad-response";
+export type FuelApiErrorKind =
+  | "backend-unavailable"
+  | "timeout"
+  | "bad-response"
+  | "rate-limited"
+  | "route-service";
 
 export class FuelApiError extends Error {
   constructor(
     message: string,
-    readonly kind: FuelApiErrorKind
+    readonly kind: FuelApiErrorKind,
+    readonly statusCode?: number
   ) {
     super(message);
     this.name = "FuelApiError";
@@ -28,50 +34,28 @@ export async function fetchNearbyFuel(params: NearbyFuelParams): Promise<NearbyF
   url.searchParams.set("radiusKm", String(params.radiusKm));
   url.searchParams.set("fuel", params.fuel);
 
-  const controller = new AbortController();
-  const timeoutId = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
-
-  try {
-    const response = await fetch(url.toString(), {
-      method: "GET",
-      headers: {
-        accept: "application/json"
-      },
-      signal: controller.signal
-    });
-
-    if (!response.ok) {
-      throw new FuelApiError("Backend unavailable", "backend-unavailable");
-    }
-
-    const payload = (await response.json()) as NearbyFuelResponse;
-
-    if (!payload.ok || !Array.isArray(payload.stations)) {
-      throw new FuelApiError("Unexpected backend response", "bad-response");
-    }
-
-    return payload;
-  } catch (error) {
-    if (error instanceof FuelApiError) {
-      throw error;
-    }
-
-    if (error instanceof DOMException && error.name === "AbortError") {
-      throw new FuelApiError("Backend request timed out", "timeout");
-    }
-
-    throw new FuelApiError("Backend unavailable", "backend-unavailable");
-  } finally {
-    window.clearTimeout(timeoutId);
-  }
+  return requestJson<NearbyFuelResponse>(url);
 }
 
 export async function fetchRouteFuel(params: RouteFuelParams): Promise<RouteFuelResponse> {
-  const url = new URL("/api/fuel/route", API_BASE_URL);
+  const endpoint = params.mode === "approx" ? "/api/fuel/route" : "/api/fuel/route-real";
+  const url = new URL(endpoint, API_BASE_URL);
   url.searchParams.set("from", params.from);
   url.searchParams.set("to", params.to);
   url.searchParams.set("corridorKm", String(params.corridorKm));
   url.searchParams.set("fuel", params.fuel);
+
+  if (
+    params.fromLat != null &&
+    params.fromLon != null &&
+    params.toLat != null &&
+    params.toLon != null
+  ) {
+    url.searchParams.set("fromLat", String(params.fromLat));
+    url.searchParams.set("fromLon", String(params.fromLon));
+    url.searchParams.set("toLat", String(params.toLat));
+    url.searchParams.set("toLon", String(params.toLon));
+  }
 
   return requestJson<RouteFuelResponse>(url);
 }
@@ -97,7 +81,17 @@ async function requestJson<T extends { ok: true }>(url: URL): Promise<T> {
     });
 
     if (!response.ok) {
-      throw new FuelApiError("Backend unavailable", "backend-unavailable");
+      const message = await readErrorMessage(response);
+
+      if (response.status === 429) {
+        throw new FuelApiError(message ?? "Сервис временно ограничил запросы.", "rate-limited", response.status);
+      }
+
+      if (response.status === 401 || response.status === 403 || response.status === 404 || response.status === 503) {
+        throw new FuelApiError(message ?? "Сервис маршрутов недоступен.", "route-service", response.status);
+      }
+
+      throw new FuelApiError(message ?? "Backend unavailable", "backend-unavailable", response.status);
     }
 
     const payload = (await response.json()) as T;
@@ -119,5 +113,15 @@ async function requestJson<T extends { ok: true }>(url: URL): Promise<T> {
     throw new FuelApiError("Backend unavailable", "backend-unavailable");
   } finally {
     window.clearTimeout(timeoutId);
+  }
+}
+
+async function readErrorMessage(response: Response): Promise<string | null> {
+  try {
+    const payload = (await response.json()) as { error?: { message?: unknown } };
+    const message = payload.error?.message;
+    return typeof message === "string" && message.trim() ? message.trim() : null;
+  } catch {
+    return null;
   }
 }

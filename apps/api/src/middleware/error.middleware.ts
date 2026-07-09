@@ -1,6 +1,7 @@
 import { GdebenzClientError } from "@ai-shturman/gdebenz-client";
 import type { ErrorRequestHandler } from "express";
 import { env } from "../config/env.js";
+import { OpenRouteServiceError } from "../services/openroute.service.js";
 
 export const errorMiddleware: ErrorRequestHandler = (error, _req, res, _next) => {
   if (error instanceof GdebenzClientError) {
@@ -15,6 +16,23 @@ export const errorMiddleware: ErrorRequestHandler = (error, _req, res, _next) =>
       error: {
         message: error.isTimeout ? "gdebenz request timed out" : "gdebenz is unavailable",
         source: "gdebenz"
+      }
+    });
+    return;
+  }
+
+  if (error instanceof OpenRouteServiceError) {
+    console.error("[openroute]", error.message, {
+      statusCode: error.statusCode,
+      code: error.code
+    });
+
+    res.status(error.statusCode).json({
+      ok: false,
+      error: {
+        message: error.message,
+        source: "openrouteservice",
+        code: error.code
       }
     });
     return;

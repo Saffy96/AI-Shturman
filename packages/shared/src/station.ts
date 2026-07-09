@@ -34,6 +34,9 @@ export interface NormalizedFuelStation {
   freshnessLabel: FreshnessLabel;
   recommendation: string;
   rawDetail: string | null;
+  distanceFromRouteKm?: number | null;
+  distanceFromStartKm?: number | null;
+  routePositionLabel?: string | null;
 }
 
 export interface FuelSummary {
@@ -70,13 +73,18 @@ export interface GeoSearchResponse {
 
 export interface RouteFuelResponse {
   ok: true;
-  mode: "route_bbox";
+  mode: "route_bbox" | "route_real";
   source: "gdebenz";
   updatedAt: string;
   from: GeoSearchResult;
   to: GeoSearchResult;
   corridorKm: number;
+  route?: {
+    distanceKm: number;
+    durationMin: number;
+    geometryPointsCount: number;
+  };
   stations: NormalizedFuelStation[];
   summary: FuelSummary;
-  warning: string;
+  warning?: string;
 }

@@ -1,5 +1,5 @@
 import type { NextFunction, Request, Response } from "express";
-import { getNearbyFuel, getRouteFuel } from "../services/fuel.service.js";
+import { getNearbyFuel, getRouteFuel, getRouteFuelReal } from "../services/fuel.service.js";
 
 export async function getNearbyFuelController(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
@@ -15,6 +15,16 @@ export async function getRouteFuelController(req: Request, res: Response, next: 
   try {
     const params = parseRouteQuery(req.query);
     const response = await getRouteFuel(params);
+    res.json(response);
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function getRouteFuelRealController(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const params = parseRouteQuery(req.query);
+    const response = await getRouteFuelReal(params);
     res.json(response);
   } catch (error) {
     next(error);
@@ -52,11 +62,19 @@ function parseRouteQuery(query: Request["query"]): {
   to: string;
   fuel: string;
   corridorKm: number;
+  fromLat?: number;
+  fromLon?: number;
+  toLat?: number;
+  toLon?: number;
 } {
   const from = parseRequiredString(query.from, "from");
   const to = parseRequiredString(query.to, "to");
   const fuel = parseOptionalString(query.fuel, "95");
   const corridorKm = parseOptionalNumber(query.corridorKm, 30);
+  const fromLat = parseOptionalCoordinate(query.fromLat, "fromLat", -90, 90);
+  const fromLon = parseOptionalCoordinate(query.fromLon, "fromLon", -180, 180);
+  const toLat = parseOptionalCoordinate(query.toLat, "toLat", -90, 90);
+  const toLon = parseOptionalCoordinate(query.toLon, "toLon", -180, 180);
 
   if (corridorKm <= 0 || corridorKm > 150) {
     throw validationError("corridorKm must be between 1 and 150");
@@ -66,7 +84,11 @@ function parseRouteQuery(query: Request["query"]): {
     from,
     to,
     fuel,
-    corridorKm
+    corridorKm,
+    fromLat,
+    fromLon,
+    toLat,
+    toLon
   };
 }
 
@@ -124,6 +146,33 @@ function parseRequiredString(value: unknown, name: string): string {
 
   if (!parsed) {
     throw validationError(`${name} is required`);
+  }
+
+  return parsed;
+}
+
+function parseOptionalCoordinate(
+  value: unknown,
+  name: string,
+  min: number,
+  max: number
+): number | undefined {
+  if (value == null) {
+    return undefined;
+  }
+
+  if (Array.isArray(value)) {
+    throw validationError(`${name} must be a single number`);
+  }
+
+  const parsed = Number(value);
+
+  if (!Number.isFinite(parsed)) {
+    throw validationError(`${name} must be a number`);
+  }
+
+  if (parsed < min || parsed > max) {
+    throw validationError(`${name} must be between ${min} and ${max}`);
   }
 
   return parsed;

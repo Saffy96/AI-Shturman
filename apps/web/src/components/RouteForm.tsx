@@ -27,6 +27,7 @@ export function RouteForm({
             value={from}
             onChange={(event) => onFromChange(event.target.value)}
             autoComplete="address-level2"
+            placeholder="Казань"
           />
         </label>
 
@@ -37,6 +38,7 @@ export function RouteForm({
             value={to}
             onChange={(event) => onToChange(event.target.value)}
             autoComplete="address-level2"
+            placeholder="Таймурзино"
           />
         </label>
       </div>
@@ -46,7 +48,7 @@ export function RouteForm({
           className="mt-4 min-h-12 w-full rounded-xl bg-slate-950 px-4 text-base font-black text-white transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
           type="button"
           onClick={onBuildRoute}
-          disabled={isBuildingRoute}
+          disabled={isBuildingRoute || !from.trim() || !to.trim()}
         >
           {isBuildingRoute ? "Строим маршрут..." : "Построить маршрут"}
         </button>
