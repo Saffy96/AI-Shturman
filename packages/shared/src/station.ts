@@ -54,3 +54,29 @@ export interface NearbyFuelResponse {
   stations: NormalizedFuelStation[];
   summary: FuelSummary;
 }
+
+export interface GeoSearchResult {
+  name: string;
+  address: string;
+  lat: number;
+  lon: number;
+}
+
+export interface GeoSearchResponse {
+  ok: true;
+  query: string;
+  results: GeoSearchResult[];
+}
+
+export interface RouteFuelResponse {
+  ok: true;
+  mode: "route_bbox";
+  source: "gdebenz";
+  updatedAt: string;
+  from: GeoSearchResult;
+  to: GeoSearchResult;
+  corridorKm: number;
+  stations: NormalizedFuelStation[];
+  summary: FuelSummary;
+  warning: string;
+}

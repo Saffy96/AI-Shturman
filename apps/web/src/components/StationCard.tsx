@@ -16,6 +16,7 @@ export function StationCard({ station }: StationCardProps) {
   const title = station.brand || station.name || "АЗС";
   const subtitle = station.brand && station.name && station.brand !== station.name ? station.name : null;
   const mapLocation = { lat: station.lat, lon: station.lon };
+  const address = station.address || "Адрес не указан";
 
   return (
     <article className="rounded-2xl border border-slate-200 bg-white p-4 shadow-soft">
@@ -23,7 +24,10 @@ export function StationCard({ station }: StationCardProps) {
         <div className="min-w-0">
           <h2 className="truncate text-xl font-black text-slate-950">{title}</h2>
           {subtitle ? <p className="mt-0.5 truncate text-sm font-semibold text-slate-600">{subtitle}</p> : null}
-          {station.address ? <p className="mt-2 text-base font-medium text-slate-700">{station.address}</p> : null}
+          <p className="mt-2 text-base font-medium text-slate-700">{address}</p>
+          <p className="mt-1 text-xs font-bold text-slate-400">
+            {station.lat.toFixed(6)}, {station.lon.toFixed(6)}
+          </p>
         </div>
 
         {station.distanceKm != null ? (
@@ -55,6 +59,7 @@ export function StationCard({ station }: StationCardProps) {
       </div>
 
       <div className="mt-4 grid grid-cols-1 gap-2 min-[380px]:grid-cols-2">
+        {/* TODO: add cached reverse geocoding later for stations without address. */}
         <a
           className="flex min-h-12 items-center justify-center rounded-xl bg-road-500 px-4 text-center text-base font-black text-white transition active:scale-[0.98]"
           href={buildYandexMapsUrl(mapLocation)}

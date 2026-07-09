@@ -5,6 +5,10 @@ export const env = {
   frontendOrigin: process.env.FRONTEND_ORIGIN ?? "http://localhost:5173",
   gdebenzBaseUrl: process.env.GDEBENZ_BASE_URL ?? "https://gdebenz.ru/api",
   gdebenzTimeoutMs: getNumberEnv("GDEBENZ_TIMEOUT_MS", 8_000),
+  nominatimBaseUrl: process.env.NOMINATIM_BASE_URL ?? "https://nominatim.openstreetmap.org",
+  nominatimTimeoutMs: getNumberEnv("NOMINATIM_TIMEOUT_MS", 8_000),
+  nominatimUserAgent:
+    process.env.NOMINATIM_USER_AGENT ?? "AI-Shturman/0.1 (personal MVP; contact: deploy-owner)",
   cacheTtlMs: getNumberEnv("CACHE_TTL_MS", 60_000),
   nodeEnv: process.env.NODE_ENV ?? "development"
 };

@@ -72,6 +72,9 @@ PORT=4000
 FRONTEND_ORIGIN=https://FRONTEND_URL
 GDEBENZ_BASE_URL=https://gdebenz.ru/api
 GDEBENZ_TIMEOUT_MS=8000
+NOMINATIM_BASE_URL=https://nominatim.openstreetmap.org
+NOMINATIM_TIMEOUT_MS=8000
+NOMINATIM_USER_AGENT=AI-Shturman/0.1 (personal MVP; contact: your-email@example.com)
 CACHE_TTL_MS=60000
 ```
 
@@ -96,6 +99,15 @@ Expected response:
 
 ```json
 { "ok": true }
+```
+
+Useful backend endpoints:
+
+```txt
+GET /health
+GET /api/geo/search?q=Казань
+GET /api/fuel/nearby?lat=55.796127&lon=49.106414&radiusKm=50&fuel=95
+GET /api/fuel/route?from=Казань&to=Таймурзино&fuel=95&corridorKm=50
 ```
 
 ## C. Deploy Frontend On Vercel

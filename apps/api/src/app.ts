@@ -3,6 +3,7 @@ import express from "express";
 import { env } from "./config/env.js";
 import { errorMiddleware } from "./middleware/error.middleware.js";
 import { fuelRouter } from "./routes/fuel.routes.js";
+import { geoRouter } from "./routes/geo.routes.js";
 
 export const app = express();
 
@@ -36,6 +37,7 @@ app.get("/health", (_req, res) => {
 });
 
 app.use("/api/fuel", fuelRouter);
+app.use("/api/geo", geoRouter);
 
 app.use((_req, res) => {
   res.status(404).json({

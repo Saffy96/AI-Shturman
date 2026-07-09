@@ -1,10 +1,20 @@
 import type { NextFunction, Request, Response } from "express";
-import { getNearbyFuel } from "../services/fuel.service.js";
+import { getNearbyFuel, getRouteFuel } from "../services/fuel.service.js";
 
 export async function getNearbyFuelController(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     const params = parseNearbyQuery(req.query);
     const response = await getNearbyFuel(params);
+    res.json(response);
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function getRouteFuelController(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const params = parseRouteQuery(req.query);
+    const response = await getRouteFuel(params);
     res.json(response);
   } catch (error) {
     next(error);
@@ -35,6 +45,29 @@ function parseNearbyQuery(query: Request["query"]): {
   }
 
   return { lat, lon, radiusKm, fuel };
+}
+
+function parseRouteQuery(query: Request["query"]): {
+  from: string;
+  to: string;
+  fuel: string;
+  corridorKm: number;
+} {
+  const from = parseRequiredString(query.from, "from");
+  const to = parseRequiredString(query.to, "to");
+  const fuel = parseOptionalString(query.fuel, "95");
+  const corridorKm = parseOptionalNumber(query.corridorKm, 30);
+
+  if (corridorKm <= 0 || corridorKm > 150) {
+    throw validationError("corridorKm must be between 1 and 150");
+  }
+
+  return {
+    from,
+    to,
+    fuel,
+    corridorKm
+  };
 }
 
 function parseRequiredNumber(value: unknown, name: string): number {
@@ -80,6 +113,20 @@ function parseOptionalString(value: unknown, fallback: string): string {
 
   const parsed = String(value).trim();
   return parsed.length > 0 ? parsed : fallback;
+}
+
+function parseRequiredString(value: unknown, name: string): string {
+  if (Array.isArray(value)) {
+    throw validationError(`${name} must be a single value`);
+  }
+
+  const parsed = String(value ?? "").trim();
+
+  if (!parsed) {
+    throw validationError(`${name} is required`);
+  }
+
+  return parsed;
 }
 
 function validationError(message: string): Error & { statusCode: number } {

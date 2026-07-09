@@ -1,4 +1,10 @@
-import type { NearbyFuelParams, NearbyFuelResponse } from "../types/fuel";
+import type {
+  GeoSearchResponse,
+  NearbyFuelParams,
+  NearbyFuelResponse,
+  RouteFuelParams,
+  RouteFuelResponse
+} from "../types/fuel";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:4000";
 const REQUEST_TIMEOUT_MS = 12_000;
@@ -41,6 +47,62 @@ export async function fetchNearbyFuel(params: NearbyFuelParams): Promise<NearbyF
     const payload = (await response.json()) as NearbyFuelResponse;
 
     if (!payload.ok || !Array.isArray(payload.stations)) {
+      throw new FuelApiError("Unexpected backend response", "bad-response");
+    }
+
+    return payload;
+  } catch (error) {
+    if (error instanceof FuelApiError) {
+      throw error;
+    }
+
+    if (error instanceof DOMException && error.name === "AbortError") {
+      throw new FuelApiError("Backend request timed out", "timeout");
+    }
+
+    throw new FuelApiError("Backend unavailable", "backend-unavailable");
+  } finally {
+    window.clearTimeout(timeoutId);
+  }
+}
+
+export async function fetchRouteFuel(params: RouteFuelParams): Promise<RouteFuelResponse> {
+  const url = new URL("/api/fuel/route", API_BASE_URL);
+  url.searchParams.set("from", params.from);
+  url.searchParams.set("to", params.to);
+  url.searchParams.set("corridorKm", String(params.corridorKm));
+  url.searchParams.set("fuel", params.fuel);
+
+  return requestJson<RouteFuelResponse>(url);
+}
+
+export async function searchGeo(query: string): Promise<GeoSearchResponse> {
+  const url = new URL("/api/geo/search", API_BASE_URL);
+  url.searchParams.set("q", query);
+
+  return requestJson<GeoSearchResponse>(url);
+}
+
+async function requestJson<T extends { ok: true }>(url: URL): Promise<T> {
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
+  try {
+    const response = await fetch(url.toString(), {
+      method: "GET",
+      headers: {
+        accept: "application/json"
+      },
+      signal: controller.signal
+    });
+
+    if (!response.ok) {
+      throw new FuelApiError("Backend unavailable", "backend-unavailable");
+    }
+
+    const payload = (await response.json()) as T;
+
+    if (!payload.ok) {
       throw new FuelApiError("Unexpected backend response", "bad-response");
     }
 

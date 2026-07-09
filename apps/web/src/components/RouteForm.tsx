@@ -1,11 +1,22 @@
 interface RouteFormProps {
   from: string;
   to: string;
+  isRouteMode: boolean;
+  isBuildingRoute: boolean;
   onFromChange: (value: string) => void;
   onToChange: (value: string) => void;
+  onBuildRoute: () => void;
 }
 
-export function RouteForm({ from, to, onFromChange, onToChange }: RouteFormProps) {
+export function RouteForm({
+  from,
+  to,
+  isRouteMode,
+  isBuildingRoute,
+  onFromChange,
+  onToChange,
+  onBuildRoute
+}: RouteFormProps) {
   return (
     <section className="rounded-2xl border border-road-100 bg-white p-4 shadow-soft">
       <div className="grid gap-3">
@@ -29,6 +40,17 @@ export function RouteForm({ from, to, onFromChange, onToChange }: RouteFormProps
           />
         </label>
       </div>
+
+      {isRouteMode ? (
+        <button
+          className="mt-4 min-h-12 w-full rounded-xl bg-slate-950 px-4 text-base font-black text-white transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
+          type="button"
+          onClick={onBuildRoute}
+          disabled={isBuildingRoute}
+        >
+          {isBuildingRoute ? "Строим маршрут..." : "Построить маршрут"}
+        </button>
+      ) : null}
     </section>
   );
 }
