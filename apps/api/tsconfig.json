@@ -4,6 +4,7 @@
     "composite": true,
     "declaration": true,
     "declarationMap": true,
+     "types": ["node", "express", "cors"],
     "rootDir": "src",
     "outDir": "dist"
   },
