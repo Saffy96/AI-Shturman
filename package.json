@@ -18,6 +18,9 @@
     "lint": "tsc -b --pretty false && npm run lint -w @ai-shturman/web"
   },
   "devDependencies": {
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
+    "@types/node": "^26.1.1",
     "typescript": "^5.5.4"
   }
 }
