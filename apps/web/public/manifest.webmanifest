@@ -1,0 +1,18 @@
+{
+  "name": "AI Штурман",
+  "short_name": "Штурман",
+  "description": "АЗС рядом по данным водителей",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "theme_color": "#0f766e",
+  "background_color": "#f7faf9",
+  "icons": [
+    {
+      "src": "/icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

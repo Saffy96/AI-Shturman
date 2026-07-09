@@ -1,0 +1,56 @@
+export type GdebenzRawStatus = "yes" | "low" | "no" | null;
+export type GdebenzRawConflict = "queue" | "no" | null;
+
+export type NormalizedStationStatus = "yes" | "low" | "no" | "unknown";
+
+export type FreshnessLabel =
+  | "свежие данные"
+  | "средняя свежесть"
+  | "устаревшие данные"
+  | "неизвестно";
+
+export interface Coordinates {
+  lat: number;
+  lon: number;
+}
+
+export interface NormalizedFuelStation {
+  id: string;
+  brand: string | null;
+  name: string | null;
+  address: string | null;
+  lat: number;
+  lon: number;
+  distanceKm: number | null;
+  status: NormalizedStationStatus;
+  statusLabel: string;
+  fuels: string[];
+  hasRequestedFuel: boolean;
+  hasQueue: boolean;
+  queueLabel: string;
+  confidence: number | null;
+  confirmations: number | null;
+  lastUpdatedAt: string | null;
+  freshnessLabel: FreshnessLabel;
+  recommendation: string;
+  rawDetail: string | null;
+}
+
+export interface FuelSummary {
+  total: number;
+  withFuel: number;
+  withRequestedFuel: number;
+  withQueue: number;
+  withoutFuel: number;
+  unknown: number;
+}
+
+export interface NearbyFuelResponse {
+  ok: true;
+  source: "gdebenz";
+  updatedAt: string;
+  radiusKm: number;
+  userLocation: Coordinates;
+  stations: NormalizedFuelStation[];
+  summary: FuelSummary;
+}
