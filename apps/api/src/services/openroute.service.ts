@@ -66,7 +66,7 @@ export async function getDrivingRoute(from: Coordinates, to: Coordinates): Promi
     const response = await fetch(url.toString(), {
       method: "GET",
       headers: {
-        accept: "application/json"
+        accept: "application/geo+json"
       },
       signal: controller.signal
     });
