@@ -31,6 +31,7 @@ import { env } from "../config/env.js";
 import { TtlCache } from "../utils/ttl-cache.js";
 import { getFirstGeoResult } from "./geo.service.js";
 import { getDrivingRoute } from "./openroute.service.js";
+import { mergeStationSources, stationNormalizer } from "./station-normalizer.service.js";
 
 interface NearbyFuelParams {
   lat: number;
@@ -72,10 +73,10 @@ interface RequestBudget { remaining: number; }
 
 export async function getNearbyFuel(params: NearbyFuelParams): Promise<NearbyFuelResponse> {
   const rawResponse = await getCachedNearbyStations(params);
-  const stations = rawResponse.stations
-    .map((station) => normalizeStation(station, params.fuel))
+  const stations = mergeStationSources([rawResponse.stations
+    .map((station) => stationNormalizer.normalizeGdebenz(station, params.fuel))
     .filter((station): station is NormalizedFuelStation => station !== null)
-    .sort((left, right) => (left.distanceKm ?? Number.POSITIVE_INFINITY) - (right.distanceKm ?? Number.POSITIVE_INFINITY));
+  ]).sort((left, right) => right.rating - left.rating || (left.distanceKm ?? Number.POSITIVE_INFINITY) - (right.distanceKm ?? Number.POSITIVE_INFINITY));
 
   return {
     ok: true,
@@ -93,19 +94,20 @@ export async function getNearbyFuel(params: NearbyFuelParams): Promise<NearbyFue
 
 export async function getRouteFuel(params: RouteFuelParams): Promise<RouteFuelResponse> {
   const [from, to] = await resolveRoutePoints(params);
-  const routeFetch = await fetchApproximateRouteStations(from, to, params.corridorKm);
+  const corridorKm = params.corridorKm || adaptiveRadius(haversineDistanceKm(from, to));
+  const routeFetch = await fetchApproximateRouteStations(from, to, corridorKm);
 
-  const stations = routeFetch.rawStations
+  const stations = mergeStationSources([routeFetch.rawStations
     .map((station) => {
       const coordinates = toCoordinates(station);
-      return normalizeStation(
+      return stationNormalizer.normalizeGdebenz(
         station,
         params.fuel,
         coordinates ? haversineDistanceKm(from, coordinates) : null
       );
     })
     .filter((station): station is NormalizedFuelStation => station !== null)
-    .sort((left, right) => (left.distanceKm ?? Number.POSITIVE_INFINITY) - (right.distanceKm ?? Number.POSITIVE_INFINITY));
+  ]).sort((left, right) => (left.distanceKm ?? Number.POSITIVE_INFINITY) - (right.distanceKm ?? Number.POSITIVE_INFINITY));
 
   return {
     ok: true,
@@ -114,7 +116,7 @@ export async function getRouteFuel(params: RouteFuelParams): Promise<RouteFuelRe
     updatedAt: new Date().toISOString(),
     from,
     to,
-    corridorKm: params.corridorKm,
+    corridorKm,
     stations,
     summary: buildSummary(stations),
     warning: [
@@ -127,9 +129,10 @@ export async function getRouteFuel(params: RouteFuelParams): Promise<RouteFuelRe
 export async function getRouteFuelReal(params: RouteFuelParams): Promise<RouteFuelResponse> {
   const [from, to] = await resolveRoutePoints(params);
   const route = await getDrivingRoute(from, to);
-  const routeFetch = await fetchRouteStationsAlongGeometry(route.geometry, params.corridorKm);
+  const corridorKm = params.corridorKm || adaptiveRadius(route.distanceKm);
+  const routeFetch = await fetchRouteStationsAlongGeometry(route.geometry, corridorKm);
 
-  const stations = routeFetch.rawStations
+  const stations = mergeStationSources([routeFetch.rawStations
     .map((station) => {
       const coordinates = toCoordinates(station);
 
@@ -139,18 +142,18 @@ export async function getRouteFuelReal(params: RouteFuelParams): Promise<RouteFu
 
       const projected = projectPointOnRoute(coordinates, route.geometry);
 
-      if (!projected || projected.distanceFromRouteKm > params.corridorKm + 0.05) {
+      if (!projected || projected.distanceFromRouteKm > corridorKm + 0.05) {
         return null;
       }
 
-      return normalizeStation(station, params.fuel, projected.distanceFromStartKm, {
+      return stationNormalizer.normalizeGdebenz(station, params.fuel, projected.distanceFromStartKm, {
         distanceFromRouteKm: roundTo(projected.distanceFromRouteKm, 1),
         distanceFromStartKm: roundTo(projected.distanceFromStartKm, 1),
         routePositionLabel: getRoutePositionLabel(projected.distanceFromRouteKm)
       });
     })
     .filter((station): station is NormalizedFuelStation => station !== null)
-    .sort(compareRouteStations);
+  ]).sort(compareRouteStations);
 
   return {
     ok: true,
@@ -159,7 +162,7 @@ export async function getRouteFuelReal(params: RouteFuelParams): Promise<RouteFu
     updatedAt: new Date().toISOString(),
     from,
     to,
-    corridorKm: params.corridorKm,
+    corridorKm,
     route: {
       distanceKm: route.distanceKm,
       durationMin: route.durationMin,
@@ -365,6 +368,7 @@ function normalizeStation(
 
   return {
     id: `osm:${raw.osm_id}`,
+    sources: ["gdebenz", "osm"],
     brand: normalizeString(raw.brand),
     name: normalizeString(raw.name),
     address: normalizeString(raw.addr),
@@ -381,6 +385,10 @@ function normalizeStation(
     confirmations: toNumberOrNull(getUnknownField(raw, "confirmations")),
     lastUpdatedAt,
     freshnessLabel,
+    freshness: 0,
+    reliability: 0,
+    reliabilityLabel: "low",
+    rating: 0,
     recommendation: getRecommendation({
       status,
       hasRequestedFuel: hasFuel,
@@ -525,6 +533,12 @@ function formatDistanceKm(value: number): string {
   }
 
   return String(Math.round(value));
+}
+
+function adaptiveRadius(routeDistanceKm: number): number {
+  if (routeDistanceKm <= 30) return 5;
+  if (routeDistanceKm <= 500) return 20;
+  return 50;
 }
 
 function interpolatePoint(from: Coordinates, to: Coordinates, factor: number): Coordinates {

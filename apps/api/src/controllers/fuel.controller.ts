@@ -39,7 +39,7 @@ function parseNearbyQuery(query: Request["query"]): {
 } {
   const lat = parseRequiredNumber(query.lat, "lat");
   const lon = parseRequiredNumber(query.lon, "lon");
-  const radiusKm = parseOptionalNumber(query.radiusKm, 50);
+  const radiusKm = parseOptionalNumber(query.radiusKm, 5);
   const fuel = parseOptionalString(query.fuel, "95");
 
   if (lat < -90 || lat > 90) {
@@ -70,14 +70,14 @@ function parseRouteQuery(query: Request["query"]): {
   const from = parseRequiredString(query.from, "from");
   const to = parseRequiredString(query.to, "to");
   const fuel = parseOptionalString(query.fuel, "95");
-  const corridorKm = parseOptionalNumber(query.corridorKm, 30);
+  const corridorKm = parseOptionalNumber(query.corridorKm, 0);
   const fromLat = parseOptionalCoordinate(query.fromLat, "fromLat", -90, 90);
   const fromLon = parseOptionalCoordinate(query.fromLon, "fromLon", -180, 180);
   const toLat = parseOptionalCoordinate(query.toLat, "toLat", -90, 90);
   const toLon = parseOptionalCoordinate(query.toLon, "toLon", -180, 180);
 
-  if (corridorKm <= 0 || corridorKm > 150) {
-    throw validationError("corridorKm must be between 1 and 150");
+  if (corridorKm < 0 || corridorKm > 150) {
+    throw validationError("corridorKm must be between 0 and 150");
   }
 
   return {

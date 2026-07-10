@@ -2,6 +2,8 @@ export type GdebenzRawStatus = "yes" | "low" | "no" | null;
 export type GdebenzRawConflict = "queue" | "no" | null;
 
 export type NormalizedStationStatus = "yes" | "low" | "no" | "unknown";
+export type StationSource = "gdebenz" | "yandex" | "osm";
+export type ReliabilityLabel = "high" | "medium" | "low";
 
 export type FreshnessLabel =
   | "свежие данные"
@@ -16,6 +18,7 @@ export interface Coordinates {
 
 export interface NormalizedFuelStation {
   id: string;
+  sources: StationSource[];
   brand: string | null;
   name: string | null;
   address: string | null;
@@ -32,6 +35,10 @@ export interface NormalizedFuelStation {
   confirmations: number | null;
   lastUpdatedAt: string | null;
   freshnessLabel: FreshnessLabel;
+  freshness: number;
+  reliability: number;
+  reliabilityLabel: ReliabilityLabel;
+  rating: number;
   recommendation: string;
   rawDetail: string | null;
   distanceFromRouteKm?: number | null;

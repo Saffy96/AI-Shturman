@@ -13,9 +13,11 @@ export function StationCard({ station }: { station: FuelStation }) {
     <div className="mt-4 grid grid-cols-2 gap-2">
       <Metric label="Отклонение" value={formatDeviation(station.distanceFromRouteKm)} />
       <Metric label="Данные" value={relativeTime(station.lastUpdatedAt)} />
+      <Metric label="Актуальность" value={`${Math.round(station.reliability * 100)}% · ${reliabilityLabel(station.reliabilityLabel)}`} />
+      <Metric label="Smart рейтинг" value={`${station.rating}/100`} />
     </div>
     <div className="mt-3 flex flex-wrap gap-2">{station.fuels.length ? station.fuels.map((fuel) => <span key={fuel} className="rounded-full bg-emerald-100 px-3 py-1.5 text-xs font-black text-emerald-900">{fuel} ✓</span>) : <span className="rounded-full bg-slate-100 px-3 py-1.5 text-xs font-black text-slate-600">Топливо неизвестно</span>}<span className={`rounded-full px-3 py-1.5 text-xs font-black ${station.hasQueue ? "bg-orange-100 text-orange-900" : "bg-sky-100 text-sky-900"}`}>{station.hasQueue ? "Очередь" : "Без очереди"}</span><span className="rounded-full bg-slate-100 px-3 py-1.5 text-xs font-black text-slate-600">{station.freshnessLabel}</span></div>
-    <div className="mt-4 rounded-2xl bg-slate-950 p-3 text-sm font-bold text-slate-200">{station.recommendation}</div>
+    <div className="mt-4 rounded-2xl bg-slate-950 p-3 text-sm font-bold text-slate-200">{station.recommendation}<div className="mt-2 text-[10px] uppercase tracking-wider text-slate-400">Источники: {station.sources.join(" · ")} · confidence {station.confidence == null ? "—" : `${Math.round(station.confidence * 100)}%`}</div></div>
     <div className="mt-3 grid grid-cols-2 gap-2"><a className="flex min-h-12 items-center justify-center rounded-2xl bg-road-500 px-3 text-center text-sm font-black text-white active:scale-95" href={buildYandexMapsUrl(location)} target="_blank" rel="noreferrer">Маршрут</a><a className="flex min-h-12 items-center justify-center rounded-2xl bg-slate-100 px-3 text-center text-sm font-black text-slate-900 active:scale-95" href={buildTwoGisUrl(location)} target="_blank" rel="noreferrer">Открыть в 2ГИС</a></div>
   </article>;
 }
@@ -23,3 +25,4 @@ function Metric({ label, value }: { label: string; value: string }) { return <di
 function formatDistance(value: number): string { return value < 10 ? value.toFixed(1) : String(Math.round(value)); }
 function formatDeviation(value?: number | null): string { if (value == null) return "—"; return value < 1 ? `${Math.round(value * 1000)} м` : `${value.toFixed(1)} км`; }
 function relativeTime(value: string | null): string { if (!value) return "Неизвестно"; const minutes = Math.max(0, Math.round((Date.now() - new Date(value).getTime()) / 60000)); return minutes < 60 ? `${minutes} мин назад` : `${Math.round(minutes / 60)} ч назад`; }
+function reliabilityLabel(value: FuelStation["reliabilityLabel"]): string { return value === "high" ? "высокая" : value === "medium" ? "средняя" : "низкая"; }
