@@ -73,7 +73,7 @@ export async function getDrivingRoute(from: Coordinates, to: Coordinates): Promi
     });
 
     if (!response.ok) {
-      throw await mapOpenRouteError(response);
+      throw await mapOpenRouteError(response, url);
     }
 
     const payload = (await response.json()) as OpenRouteGeoJsonResponse;
@@ -129,8 +129,10 @@ export async function getDrivingRoute(from: Coordinates, to: Coordinates): Promi
   }
 }
 
-async function mapOpenRouteError(response: Response): Promise<OpenRouteServiceError> {
-  const bodyMessage = await readBodyMessage(response);
+async function mapOpenRouteError(response: Response, url: URL): Promise<OpenRouteServiceError> {
+  const responseBody = await safeReadResponseBody(response);
+  logOpenRouteError(response.status, response.statusText, url, responseBody);
+  const bodyMessage = readBodyMessage(responseBody);
 
   if (response.status === 401) {
     return new OpenRouteServiceError(
@@ -171,9 +173,9 @@ async function mapOpenRouteError(response: Response): Promise<OpenRouteServiceEr
   );
 }
 
-async function readBodyMessage(response: Response): Promise<string | null> {
+function readBodyMessage(responseBody: string): string | null {
   try {
-    const payload = (await response.json()) as { error?: unknown; message?: unknown };
+    const payload = JSON.parse(responseBody) as { error?: unknown; message?: unknown };
 
     if (typeof payload.error === "string" && payload.error.trim()) {
       return payload.error.trim();
@@ -187,6 +189,26 @@ async function readBodyMessage(response: Response): Promise<string | null> {
   } catch {
     return null;
   }
+}
+
+async function safeReadResponseBody(response: Response): Promise<string> {
+  try {
+    return await response.text();
+  } catch {
+    return "<failed to read body>";
+  }
+}
+
+function logOpenRouteError(status: number, statusText: string, url: URL, responseBody: string): void {
+  const safeUrl = new URL(url.toString());
+  safeUrl.searchParams.delete("api_key");
+
+  console.error("[openroute]");
+  console.error(`status: ${status}`);
+  console.error(`statusText: ${statusText}`);
+  console.error(`url: ${safeUrl.toString()}`);
+  console.error("body:");
+  console.error(responseBody);
 }
 
 function roundTo(value: number, digits: number): number {
