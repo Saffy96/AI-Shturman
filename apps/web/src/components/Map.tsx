@@ -2,9 +2,9 @@ import { Map as YandexMap, Placemark, Polyline, YMaps } from "@pbe/react-yandex-
 import { useEffect, useRef } from "react";
 import type { Coordinates, FuelStation, GeoSearchResult } from "../types/fuel";
 
-interface Props { from?: GeoSearchResult | null; to?: GeoSearchResult | null; location?: Coordinates | null; route?: Coordinates[]; stations: FuelStation[]; zoom: number; onZoomChange: (zoom: number) => void; }
+interface Props { from?: GeoSearchResult | null; to?: GeoSearchResult | null; location?: Coordinates | null; route?: Coordinates[]; stations: FuelStation[]; zoom: number; onZoomChange: (zoom: number) => void; onStationClick?: (station: FuelStation) => void; }
 
-export function Map({ from, to, location, route = [], stations, zoom, onZoomChange }: Props) {
+export function Map({ from, to, location, route = [], stations, zoom, onZoomChange, onStationClick }: Props) {
   const mapRef = useRef<any>(null);
   const points = [from, to, location, ...stations].filter(Boolean) as Coordinates[];
   const center = points[0] ? [points[0].lat, points[0].lon] : [55.796127, 49.106414];
@@ -19,7 +19,7 @@ export function Map({ from, to, location, route = [], stations, zoom, onZoomChan
       {from ? <Placemark geometry={[from.lat, from.lon]} properties={{ iconCaption: `🚩 ${from.name}`, balloonContent: from.address }} /> : null}
       {to ? <Placemark geometry={[to.lat, to.lon]} properties={{ iconCaption: `🏁 ${to.name}`, balloonContent: to.address }} /> : null}
       {location ? <Placemark geometry={[location.lat, location.lon]} properties={{ iconCaption: "📍 Вы здесь" }} /> : null}
-      {stations.map((s) => <Placemark key={s.id} geometry={[s.lat, s.lon]} properties={{ iconContent: "⛽", balloonContentHeader: s.brand || s.name || "АЗС", balloonContentBody: stationBalloon(s) }} options={{ preset: "islands#circleIcon", iconColor: s.status === "no" ? "#ff5252" : s.hasRequestedFuel ? "#00e676" : "#64748b" }} modules={["geoObject.addon.balloon"]} />)}
+      {stations.map((s) => <Placemark key={s.id} geometry={[s.lat, s.lon]} properties={{ iconContent: "⛽", hintContent: `${s.brand || s.name || "АЗС"} — открыть подробности` }} options={{ preset: "islands#circleIcon", iconColor: s.status === "no" ? "#ff5252" : s.hasRequestedFuel ? "#00e676" : "#64748b" }} modules={["geoObject.addon.hint"]} onClick={() => onStationClick?.(s)} />)}
     </YandexMap></YMaps>
   </section>;
 }

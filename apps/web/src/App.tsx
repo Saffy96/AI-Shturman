@@ -99,7 +99,13 @@ export function App() {
   const isRouteMode = selectedMode === "route";
   const canBuildRoute = Boolean(fromPoint && toPoint);
   const canRequestStations = isRouteMode ? Boolean(routePoints) : Boolean(selectedLocation);
-  const allStations = data?.stations ?? [];
+  const allResponseStations = data?.stations ?? [];
+  const allStations = useMemo(
+    () => routeDataForFiltering(data)
+      ? allResponseStations.filter((station) => station.distanceFromRouteKm != null && station.distanceFromRouteKm <= 2)
+      : allResponseStations,
+    [allResponseStations, data]
+  );
   const filteredStations = useMemo(() => applyStationFilters(allStations, filters, fuel), [allStations, filters, fuel]);
   const displaySummary = useMemo(() => buildClientSummary(allStations, fuel), [allStations, fuel]);
   const filteredSummary: FilteredSummary = {
@@ -350,13 +356,19 @@ export function App() {
     }
   }
 
+  function handleMapStationClick(station: FuelStation) {
+    window.dispatchEvent(new Event("ai-shturman:open-station"));
+    window.history.replaceState(null, "", `#station-${station.id}`);
+    window.setTimeout(() => document.getElementById(`station-${station.id}`)?.scrollIntoView({ behavior: "smooth", block: "start" }), 220);
+  }
+
   return (
     <CarShell
       online={isOnline}
       gpsReady={Boolean(geolocation.location)}
       accuracy={geolocation.location?.accuracy}
       drivePanel={<DrivePanel route={routeData} next={filteredStations[0]} />}
-      map={<MapContainer from={routePoints?.from} to={routePoints?.to} location={!isRouteMode ? selectedLocation?.coords : null} route={routeData?.route?.geometry} stations={filteredStations} zoom={mapZoom} onZoomChange={setMapZoom} />}
+      map={<MapContainer from={routePoints?.from} to={routePoints?.to} location={!isRouteMode ? selectedLocation?.coords : null} route={routeData?.route?.geometry} stations={filteredStations} zoom={mapZoom} onZoomChange={setMapZoom} onStationClick={handleMapStationClick} />}
     >
       <main className="car-panel mx-auto grid max-w-3xl gap-3">
         {!isOnline ? <Notice tone="danger" text="Нет интернета. Данные можно обновить после восстановления связи." /> : null}
@@ -968,6 +980,10 @@ function normalizeRouteLocation(value: unknown): RouteLocation | null {
   if (!Number.isFinite(point.lat) || !Number.isFinite(point.lon) || typeof point.text !== "string" || typeof point.address !== "string") return null;
   if (point.type !== "gps" && point.type !== "address" && point.type !== "map") return null;
   return { type: point.type, text: point.text, name: point.name || point.text, address: point.address, lat: Number(point.lat), lon: Number(point.lon), ...(typeof point.accuracy === "number" ? { accuracy: point.accuracy } : {}) };
+}
+
+function routeDataForFiltering(data: FuelResponse | null): data is RouteFuelResponse {
+  return Boolean(data && "mode" in data && data.mode === "route_real" && data.route);
 }
 
 function normalizeMode(value: unknown): SearchMode | null {

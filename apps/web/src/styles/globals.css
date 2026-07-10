@@ -38,6 +38,13 @@ body {
   border-color: rgba(255, 255, 255, 0.08);
 }
 
+.car-panel input {
+  color: #0f172a;
+  background-color: #fff;
+}
+
+.car-panel input::placeholder { color: #94a3b8; }
+
 .car-panel > section,
 .car-panel article {
   background-color: rgba(16, 21, 29, 0.88) !important;
@@ -47,6 +54,18 @@ body {
 
 .car-panel article h2 { color: #fff !important; }
 .car-panel article p { color: #8a94a6 !important; }
+
+.car-panel article:target {
+  border-color: rgba(0, 230, 118, .85) !important;
+  box-shadow: 0 0 0 2px rgba(0, 230, 118, .25), 0 20px 60px rgba(0, 230, 118, .18);
+  animation: station-highlight 1.2s ease-out;
+}
+
+@keyframes station-highlight {
+  from { transform: scale(.97); }
+  55% { transform: scale(1.015); }
+  to { transform: scale(1); }
+}
 
 .ymaps-2-1-79-map { filter: saturate(.8) contrast(1.05) brightness(.82); }
 [class*="placemark-overlay"] { animation: marker-pulse 2.4s ease-in-out infinite; }
