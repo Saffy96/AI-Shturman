@@ -19,6 +19,37 @@ export function haversineDistanceKm(from: Coordinates, to: Coordinates): number 
   return earthRadiusKm * c;
 }
 
+/** Samples a route by travelled distance while always preserving its endpoints. */
+export function simplifyRoute(route: Coordinates[], intervalKm = 25): Coordinates[] {
+  if (route.length <= 2 || intervalKm <= 0) return [...route];
+  const simplified: Coordinates[] = [route[0]];
+  let distanceToNextSample = intervalKm;
+
+  for (let index = 1; index < route.length; index += 1) {
+    let start = route[index - 1];
+    const end = route[index];
+    let segmentKm = haversineDistanceKm(start, end);
+
+    while (segmentKm >= distanceToNextSample && segmentKm > 0) {
+      const ratio = distanceToNextSample / segmentKm;
+      const sample = {
+        lat: start.lat + (end.lat - start.lat) * ratio,
+        lon: start.lon + (end.lon - start.lon) * ratio
+      };
+      simplified.push(sample);
+      start = sample;
+      segmentKm = haversineDistanceKm(start, end);
+      distanceToNextSample = intervalKm;
+    }
+    distanceToNextSample -= segmentKm;
+  }
+
+  const last = route[route.length - 1];
+  const tail = simplified[simplified.length - 1];
+  if (tail.lat !== last.lat || tail.lon !== last.lon) simplified.push(last);
+  return simplified;
+}
+
 export function distancePointToSegmentKm(
   point: Coordinates,
   segmentStart: Coordinates,

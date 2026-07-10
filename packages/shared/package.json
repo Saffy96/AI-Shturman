@@ -16,7 +16,8 @@
     "build": "tsc -p tsconfig.json",
     "start": "node dist/index.js",
     "lint": "tsc -p tsconfig.json --noEmit",
-    "test:advice": "npm run build && node test/navigator-advice.test.mjs"
+    "test:advice": "npm run build && node test/navigator-advice.test.mjs",
+    "test:route": "npm run build && node test/route-geometry.test.mjs"
   },
   "devDependencies": {
     "typescript": "^5.5.4"

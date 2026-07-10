@@ -10,6 +10,7 @@ import {
   normalizeStationStatus,
   parseFuels,
   projectPointOnRoute,
+  simplifyRoute,
   toNumberOrNull,
   type Coordinates,
   type FuelSummary,
@@ -64,7 +65,10 @@ interface StationRouteMetrics {
 const nearbyCache = new TtlCache<GdebenzNearbyResponse>(env.cacheTtlMs);
 const bboxCache = new TtlCache<GdebenzBBoxStationRaw[]>(env.cacheTtlMs);
 const MAX_ROUTE_CHUNKS = 20;
+const MAX_GDEBENZ_ROUTE_REQUESTS = 24;
 const MAX_CHUNK_SPLIT_DEPTH = 2;
+
+interface RequestBudget { remaining: number; }
 
 export async function getNearbyFuel(params: NearbyFuelParams): Promise<NearbyFuelResponse> {
   const rawResponse = await getCachedNearbyStations(params);
@@ -250,9 +254,10 @@ async function fetchApproximateRouteStations(
   const chunks = buildStraightLineChunks(from, to, chunkCount);
   const warnings: string[] = [];
   const rawStations: GdebenzBBoxStationRaw[] = [];
+  const budget = { remaining: MAX_GDEBENZ_ROUTE_REQUESTS };
 
   for (let index = 0; index < chunks.length; index += 1) {
-    const result = await fetchGeometryChunkStations(chunks[index], corridorKm, index + 1, MAX_CHUNK_SPLIT_DEPTH, "route-bbox");
+    const result = await fetchGeometryChunkStations(chunks[index], corridorKm, index + 1, MAX_CHUNK_SPLIT_DEPTH, "route-bbox", budget);
     rawStations.push(...result.rawStations);
     warnings.push(...result.warnings);
   }
@@ -268,19 +273,21 @@ async function fetchRouteStationsAlongGeometry(
   routeGeometry: Coordinates[],
   corridorKm: number
 ): Promise<ChunkFetchResult> {
-  const totalDistanceKm = getGeometryLengthKm(routeGeometry);
-  const chunks = buildGeometryChunks(routeGeometry, totalDistanceKm, corridorKm);
+  const searchGeometry = simplifyRoute(routeGeometry, 25);
+  const totalDistanceKm = getGeometryLengthKm(searchGeometry);
+  const chunks = buildGeometryChunks(searchGeometry, totalDistanceKm, corridorKm);
   const warnings: string[] = [];
   const rawStations: GdebenzBBoxStationRaw[] = [];
+  const budget = { remaining: MAX_GDEBENZ_ROUTE_REQUESTS };
 
   for (let index = 0; index < chunks.length; index += 1) {
-    const result = await fetchGeometryChunkStations(chunks[index], corridorKm, index + 1, MAX_CHUNK_SPLIT_DEPTH, "route-real");
+    const result = await fetchGeometryChunkStations(chunks[index], corridorKm, index + 1, MAX_CHUNK_SPLIT_DEPTH, "route-real", budget);
     rawStations.push(...result.rawStations);
     warnings.push(...result.warnings);
   }
 
   const uniqueStations = dedupeStations(rawStations);
-  console.log(`[route-real] chunks: ${chunks.length}, stations raw: ${rawStations.length}, unique: ${uniqueStations.length}`);
+  console.log(`[route-real] points: ${routeGeometry.length}->${searchGeometry.length}, chunks: ${chunks.length}, requests: ${MAX_GDEBENZ_ROUTE_REQUESTS - budget.remaining}, stations raw: ${rawStations.length}, unique: ${uniqueStations.length}`);
 
   return {
     chunksProcessed: chunks.length,
@@ -294,8 +301,13 @@ async function fetchGeometryChunkStations(
   corridorKm: number,
   chunkIndex: number,
   splitDepthRemaining: number,
-  warningPrefix: "route-real" | "route-bbox"
+  warningPrefix: "route-real" | "route-bbox",
+  budget: RequestBudget
 ): Promise<ChunkFetchResult> {
+  if (budget.remaining <= 0) {
+    return { chunksProcessed: 0, rawStations: [], warnings: [`Лимит запросов gdebenz исчерпан: сегмент ${chunkIndex} пропущен.`] };
+  }
+  budget.remaining -= 1;
   const bbox = buildRouteBBox(chunkGeometry, corridorKm);
 
   try {
@@ -308,8 +320,8 @@ async function fetchGeometryChunkStations(
   } catch (error) {
     if (isBBoxTooLargeError(error) && splitDepthRemaining > 0 && chunkGeometry.length > 2) {
       const [left, right] = splitGeometryChunk(chunkGeometry);
-      const leftResult = await fetchGeometryChunkStations(left, corridorKm, chunkIndex, splitDepthRemaining - 1, warningPrefix);
-      const rightResult = await fetchGeometryChunkStations(right, corridorKm, chunkIndex, splitDepthRemaining - 1, warningPrefix);
+      const leftResult = await fetchGeometryChunkStations(left, corridorKm, chunkIndex, splitDepthRemaining - 1, warningPrefix, budget);
+      const rightResult = await fetchGeometryChunkStations(right, corridorKm, chunkIndex, splitDepthRemaining - 1, warningPrefix, budget);
 
       return {
         chunksProcessed: leftResult.chunksProcessed + rightResult.chunksProcessed,
@@ -326,15 +338,8 @@ async function fetchGeometryChunkStations(
       };
     }
 
-    if (error instanceof GdebenzClientError) {
-      return {
-        chunksProcessed: 1,
-        rawStations: [],
-        warnings: [`Часть маршрута пропущена: chunk ${chunkIndex} не загрузился (${warningPrefix}: ${error.message}).`]
-      };
-    }
-
-    throw error;
+    const message = error instanceof GdebenzClientError || error instanceof Error ? error.message : "unknown error";
+    return { chunksProcessed: 1, rawStations: [], warnings: [`Часть маршрута пропущена: сегмент ${chunkIndex} не загрузился (${warningPrefix}: ${message}).`] };
   }
 }
 

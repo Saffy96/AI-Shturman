@@ -5,7 +5,7 @@ export function StationCard({ station }: { station: FuelStation }) {
   const title = station.brand || station.name || "АЗС";
   const location = { lat: station.lat, lon: station.lon };
   const distance = station.distanceFromStartKm ?? station.distanceKm;
-  return <article className="group rounded-[28px] border border-white/80 bg-white/85 p-4 shadow-[0_18px_55px_rgba(15,23,42,.10)] backdrop-blur-xl transition hover:-translate-y-0.5 hover:shadow-xl">
+  return <article id={`station-${station.id}`} className="group scroll-mt-40 rounded-[28px] border border-white/80 bg-white/85 p-4 shadow-[0_18px_55px_rgba(15,23,42,.10)] backdrop-blur-xl transition hover:-translate-y-0.5 hover:shadow-xl">
     <header className="flex gap-3">
       <div className="grid h-14 w-14 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-emerald-400 to-road-600 text-2xl shadow-lg">⛽</div>
       <div className="min-w-0 flex-1"><div className="flex items-start justify-between gap-2"><div><h2 className="truncate text-xl font-black text-slate-950">{title}</h2><p className="mt-1 line-clamp-2 text-sm font-semibold text-slate-500">{station.address || "Адрес не указан"}</p></div>{distance != null ? <div className="shrink-0 text-right"><div className="text-2xl font-black text-slate-950">{formatDistance(distance)}</div><div className="text-[10px] font-black uppercase text-slate-400">км по пути</div></div> : null}</div></div>
