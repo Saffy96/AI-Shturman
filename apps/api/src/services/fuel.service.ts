@@ -29,7 +29,7 @@ import {
 } from "@ai-shturman/gdebenz-client";
 import { env } from "../config/env.js";
 import { TtlCache } from "../utils/ttl-cache.js";
-import { getFirstGeoResult } from "./geo.service.js";
+import { getFirstGeoResult, reverseGeo } from "./geo.service.js";
 import { getDrivingRoute } from "./openroute.service.js";
 import { mergeStationSources, stationNormalizer } from "./station-normalizer.service.js";
 
@@ -65,6 +65,7 @@ interface StationRouteMetrics {
 
 const nearbyCache = new TtlCache<GdebenzNearbyResponse>(env.cacheTtlMs);
 const bboxCache = new TtlCache<GdebenzBBoxStationRaw[]>(env.cacheTtlMs);
+const stationAddressCache = new TtlCache<string>(7 * 24 * 60 * 60 * 1000);
 const MAX_ROUTE_CHUNKS = 20;
 const MAX_GDEBENZ_ROUTE_REQUESTS = 24;
 const MAX_CHUNK_SPLIT_DEPTH = 2;
@@ -77,6 +78,7 @@ export async function getNearbyFuel(params: NearbyFuelParams): Promise<NearbyFue
     .map((station) => stationNormalizer.normalizeGdebenz(station, params.fuel))
     .filter((station): station is NormalizedFuelStation => station !== null)
   ]).sort((left, right) => right.rating - left.rating || (left.distanceKm ?? Number.POSITIVE_INFINITY) - (right.distanceKm ?? Number.POSITIVE_INFINITY));
+  await enrichStationAddresses(stations);
 
   return {
     ok: true,
@@ -108,6 +110,7 @@ export async function getRouteFuel(params: RouteFuelParams): Promise<RouteFuelRe
     })
     .filter((station): station is NormalizedFuelStation => station !== null)
   ]).sort((left, right) => (left.distanceKm ?? Number.POSITIVE_INFINITY) - (right.distanceKm ?? Number.POSITIVE_INFINITY));
+  await enrichStationAddresses(stations);
 
   return {
     ok: true,
@@ -154,6 +157,7 @@ export async function getRouteFuelReal(params: RouteFuelParams): Promise<RouteFu
     })
     .filter((station): station is NormalizedFuelStation => station !== null)
   ]).sort(compareRouteStations);
+  await enrichStationAddresses(stations);
 
   return {
     ok: true,
@@ -368,6 +372,7 @@ function normalizeStation(
 
   return {
     id: `osm:${raw.osm_id}`,
+    source: "gdebenz",
     sources: ["gdebenz", "osm"],
     brand: normalizeString(raw.brand),
     name: normalizeString(raw.name),
@@ -378,17 +383,21 @@ function normalizeStation(
     status,
     statusLabel: getStatusLabel(status),
     fuels,
+    prices: null,
     hasRequestedFuel: hasFuel,
     hasQueue,
+    queue: { present: hasQueue, estimatedMinutes: hasQueue ? 5 : 0 },
     queueLabel: hasQueue ? "Есть очередь" : getQueueLabel(raw.conflict),
     confidence: toNumberOrNull(getUnknownField(raw, "confidence_base")),
     confirmations: toNumberOrNull(getUnknownField(raw, "confirmations")),
+    reports: Math.max(0, Math.round(toNumberOrNull(getUnknownField(raw, "confirmations")) ?? 0)),
     lastUpdatedAt,
     freshnessLabel,
     freshness: 0,
     reliability: 0,
     reliabilityLabel: "low",
     rating: 0,
+    stopCost: { deviationKm: routeMetrics?.distanceFromRouteKm ?? 0, extraTimeMin: 0, fuelLiters: 0, fuelPriceRub: null, totalRub: null },
     recommendation: getRecommendation({
       status,
       hasRequestedFuel: hasFuel,
@@ -539,6 +548,17 @@ function adaptiveRadius(routeDistanceKm: number): number {
   if (routeDistanceKm <= 30) return 5;
   if (routeDistanceKm <= 500) return 20;
   return 50;
+}
+
+async function enrichStationAddresses(stations: NormalizedFuelStation[]): Promise<void> {
+  const missing = stations.filter((station) => !station.address).slice(0, 8);
+  await Promise.allSettled(missing.map(async (station) => {
+    const key = `${station.lat.toFixed(5)}:${station.lon.toFixed(5)}`;
+    const cached = stationAddressCache.get(key);
+    if (cached) { station.address = cached; return; }
+    const result = await reverseGeo(station.lat, station.lon);
+    if (result.address) { station.address = result.address; stationAddressCache.set(key, result.address); }
+  }));
 }
 
 function interpolatePoint(from: Coordinates, to: Coordinates, factor: number): Coordinates {

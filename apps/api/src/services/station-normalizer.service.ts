@@ -24,12 +24,14 @@ export class StationNormalizer {
     const hasQueue = raw.conflict === "queue" || detailMentionsQueue(detail);
     const deviation = route?.distanceFromRouteKm ?? null;
     const rating = calculateStationRating({ selectedFuel, status, freshness, reliability, deviationKm: deviation, hasQueue });
+    const prices = parsePrices(raw);
+    const stopCost = calculateStopCost(deviation, prices?.[requestedFuel] ?? null);
     return {
-      id: `osm:${raw.osm_id}`, sources: ["gdebenz", "osm"], brand: stringValue(raw.brand), name: stringValue(raw.name), address: stringValue(raw.addr), lat, lon,
+      id: `osm:${raw.osm_id}`, source: "gdebenz", sources: ["gdebenz", "osm"], brand: stringValue(raw.brand), name: stringValue(raw.name), address: stringValue(raw.addr), lat, lon,
       distanceKm: toNumberOrNull(raw.distance_km) ?? fallbackDistanceKm ?? null, status, statusLabel: getStatusLabel(status), fuels, hasRequestedFuel: selectedFuel,
-      hasQueue, queueLabel: hasQueue ? "Есть очередь" : getQueueLabel(raw.conflict), confidence, confirmations, lastUpdatedAt: updatedAt, freshnessLabel, freshness,
-      reliability, reliabilityLabel: reliability >= 0.75 ? "high" : reliability >= 0.45 ? "medium" : "low", rating,
-      recommendation: getRecommendation({ status, hasRequestedFuel: selectedFuel, hasQueue, freshnessLabel }), rawDetail: detail,
+      prices, hasQueue, queue: { present: hasQueue, estimatedMinutes: hasQueue ? 5 : 0 }, queueLabel: hasQueue ? "Есть очередь" : getQueueLabel(raw.conflict), confidence, confirmations, reports: Math.max(0, Math.round(confirmations ?? 0)), lastUpdatedAt: updatedAt, freshnessLabel, freshness,
+      reliability, reliabilityLabel: reliability >= 0.7 ? "high" : reliability >= 0.4 ? "medium" : "low", rating, stopCost,
+      recommendation: rating >= 60 ? "Лучше заехать сюда" : getRecommendation({ status, hasRequestedFuel: selectedFuel, hasQueue, freshnessLabel }), rawDetail: detail,
       distanceFromRouteKm: deviation, distanceFromStartKm: route?.distanceFromStartKm ?? null, routePositionLabel: route?.routePositionLabel ?? null
     };
   }
@@ -52,7 +54,7 @@ export function mergeStationSources(groups: NormalizedFuelStation[][]): Normaliz
     if ((station.lastUpdatedAt ?? "") > (existing.lastUpdatedAt ?? "")) Object.assign(existing, { status: station.status, statusLabel: station.statusLabel, lastUpdatedAt: station.lastUpdatedAt, freshness: station.freshness, freshnessLabel: station.freshnessLabel, hasQueue: station.hasQueue, queueLabel: station.queueLabel });
     existing.confidence = Math.max(existing.confidence ?? 0, station.confidence ?? 0);
     existing.reliability = clamp(Math.max(existing.reliability, station.reliability) + 0.05 * (existing.sources.length - 1), 0, 1);
-    existing.reliabilityLabel = existing.reliability >= 0.75 ? "high" : existing.reliability >= 0.45 ? "medium" : "low";
+    existing.reliabilityLabel = existing.reliability >= 0.7 ? "high" : existing.reliability >= 0.4 ? "medium" : "low";
     existing.rating = Math.max(existing.rating, station.rating);
   }
   return merged;
@@ -61,6 +63,8 @@ export function mergeStationSources(groups: NormalizedFuelStation[][]): Normaliz
 function sameIdentity(a: NormalizedFuelStation, b: NormalizedFuelStation): boolean { const left = (a.brand || a.name || "").toLowerCase(); const right = (b.brand || b.name || "").toLowerCase(); return !left || !right || left === right; }
 function freshnessScore(value: string | null): number { if (!value) return 0.25; const hours = Math.max(0, (Date.now() - new Date(value).getTime()) / 3_600_000); return hours <= 0.5 ? 1 : hours <= 2 ? 0.78 : hours <= 12 ? 0.5 : 0.28; }
 function normalizeProbability(value: number | null): number | null { if (value == null) return null; return clamp(value > 1 ? value / 100 : value, 0, 1); }
+function parsePrices(raw: Record<string, unknown>): Record<string, number> | null { const value = raw.prices ?? raw.fuel_prices; if (!value || typeof value !== "object") return null; const prices = Object.fromEntries(Object.entries(value).map(([fuel, price]) => [fuel, toNumberOrNull(price)]).filter((entry): entry is [string, number] => entry[1] != null)); return Object.keys(prices).length ? prices : null; }
+function calculateStopCost(deviationKm: number | null, price: number | null) { const km = Math.max(0, (deviationKm ?? 0) * 2); const fuelLiters = km * 0.1; return { deviationKm: deviationKm ?? 0, extraTimeMin: Math.round(km / 50 * 60), fuelLiters: Math.round(fuelLiters * 10) / 10, fuelPriceRub: price, totalRub: price == null ? null : Math.round(fuelLiters * price) }; }
 function stringValue(value: unknown): string | null { return typeof value === "string" && value.trim() ? value.trim() : null; }
 function clamp(value: number, min: number, max: number): number { return Math.min(max, Math.max(min, value)); }
 

@@ -5,7 +5,7 @@ import { CarShell, DrivePanel, MapContainer, NavigationCard } from "./components
 import { NavigatorAdviceCard } from "./components/NavigatorAdviceCard";
 import { RouteForm } from "./components/RouteForm";
 import { formatDuration, RouteSummary } from "./components/RouteSummary";
-import { FuelStationCard } from "./components/FuelStationCard";
+import { NextStations } from "./components/NextStations";
 import { SummaryCard } from "./components/SummaryCard";
 import { GeolocationRequestError, useGeolocation } from "./hooks/useGeolocation";
 import { useNetworkStatus } from "./hooks/useNetworkStatus";
@@ -388,7 +388,6 @@ export function App() {
           onBuildRoute={handleBuildRoute}
         />
 
-        {isRouteMode && routePoints ? <RouteInfo points={routePoints} route={routeData} stationCount={filteredStations.length} /> : null}
         {routeData?.mode === "route_real" && routeData.route ? <RouteSummary route={routeData} stationCount={filteredStations.length} /> : null}
 
         <section className="rounded-2xl border border-road-100 bg-white p-4 shadow-soft">
@@ -528,13 +527,7 @@ export function App() {
         {data && data.stations.length === 0 && !isLoading ? <EmptyState /> : null}
         {data && data.stations.length > 0 && filteredStations.length === 0 && !isLoading ? <FilterEmptyState /> : null}
 
-        {filteredStations.length > 0 ? (
-          <section className="grid gap-3 pb-4 max-sm:rounded-t-[32px] max-sm:bg-slate-100/95 max-sm:p-3 max-sm:shadow-[0_-20px_60px_rgba(15,23,42,.14)] max-sm:backdrop-blur-xl">
-            {filteredStations.map((station, index) => (
-              <FuelStationCard key={station.id} station={station} index={index} />
-            ))}
-          </section>
-        ) : null}
+        {filteredStations.length > 0 ? <NextStations stations={filteredStations} /> : null}
       </main>
     </CarShell>
   );

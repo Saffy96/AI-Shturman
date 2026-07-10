@@ -1,7 +1,7 @@
 import type { StationFilters } from "../types/fuel";
 
 export function FiltersPanel({ filters, onChange }: { filters: StationFilters; onChange: (filters: StationFilters) => void }) {
-  return <section className="sticky top-2 z-20 -mx-1 overflow-x-auto rounded-2xl border border-white/70 bg-white/80 p-2 shadow-lg backdrop-blur-xl">
+  return <section className="-mx-1 overflow-x-auto rounded-2xl border border-white/70 bg-white/80 p-2 shadow-lg backdrop-blur-xl">
     <div className="flex min-w-max gap-2">
       <Chip active={filters.availability === "withSelectedFuel"} onClick={() => onChange({ ...filters, availability: filters.availability === "withSelectedFuel" ? "all" : "withSelectedFuel" })}>⛽ Выбранное топливо</Chip>
       <Chip active={filters.availability === "withFuel"} onClick={() => onChange({ ...filters, availability: filters.availability === "withFuel" ? "all" : "withFuel" })}>✓ В наличии</Chip>
