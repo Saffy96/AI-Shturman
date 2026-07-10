@@ -10,10 +10,14 @@ interface OpenRouteFeature {
       distance?: number;
       duration?: number;
     };
+    segments?: Array<{
+      distance?: number;
+      duration?: number;
+    }>;
   };
 }
 
-interface OpenRouteGeoJsonResponse {
+interface OpenRouteDirectionsResponse {
   features?: OpenRouteFeature[];
 }
 
@@ -51,24 +55,19 @@ export async function getDrivingRoute(from: Coordinates, to: Coordinates): Promi
     );
   }
 
-  const url = new URL("/v2/directions/driving-car/geojson", env.openRouteServiceBaseUrl);
+  const url = new URL("/v2/directions/driving-car", env.openRouteServiceBaseUrl);
+  url.searchParams.set("api_key", env.openRouteServiceApiKey);
+  url.searchParams.set("start", `${from.lon},${from.lat}`);
+  url.searchParams.set("end", `${to.lon},${to.lat}`);
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), env.openRouteServiceTimeoutMs);
 
   try {
     const response = await fetch(url.toString(), {
-      method: "POST",
+      method: "GET",
       headers: {
-        accept: "application/json",
-        authorization: env.openRouteServiceApiKey,
-        "content-type": "application/json"
+        accept: "application/json"
       },
-      body: JSON.stringify({
-        coordinates: [
-          [from.lon, from.lat],
-          [to.lon, to.lat]
-        ]
-      }),
       signal: controller.signal
     });
 
@@ -76,11 +75,11 @@ export async function getDrivingRoute(from: Coordinates, to: Coordinates): Promi
       throw await mapOpenRouteError(response, url);
     }
 
-    const payload = (await response.json()) as OpenRouteGeoJsonResponse;
+    const payload = (await response.json()) as OpenRouteDirectionsResponse;
     const feature = payload.features?.[0];
     const coordinates = feature?.geometry?.coordinates;
-    const distance = feature?.properties?.summary?.distance;
-    const duration = feature?.properties?.summary?.duration;
+    const distance = feature?.properties?.summary?.distance ?? feature?.properties?.segments?.[0]?.distance;
+    const duration = feature?.properties?.summary?.duration ?? feature?.properties?.segments?.[0]?.duration;
 
     if (!Array.isArray(coordinates) || typeof distance !== "number" || typeof duration !== "number") {
       throw new OpenRouteServiceError(
