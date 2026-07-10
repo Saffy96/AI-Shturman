@@ -1,119 +1,25 @@
 import type { FuelStation } from "../types/fuel";
 import { buildTwoGisUrl, buildYandexMapsUrl } from "../utils/maps";
 
-interface StationCardProps {
-  station: FuelStation;
-}
-
-const statusStyles: Record<FuelStation["status"], string> = {
-  yes: "bg-emerald-100 text-emerald-900",
-  low: "bg-amber-100 text-amber-950",
-  no: "bg-rose-100 text-rose-900",
-  unknown: "bg-slate-100 text-slate-800"
-};
-
-export function StationCard({ station }: StationCardProps) {
+export function StationCard({ station }: { station: FuelStation }) {
   const title = station.brand || station.name || "АЗС";
-  const subtitle = station.brand && station.name && station.brand !== station.name ? station.name : null;
-  const mapLocation = { lat: station.lat, lon: station.lon };
-  const address = station.address || "Адрес не указан";
-  const routeDistanceLabel =
-    station.distanceFromStartKm != null ? `Через ${formatDistance(station.distanceFromStartKm)} км по маршруту` : null;
-  const routeDeviationLabel = station.routePositionLabel ?? null;
-
-  return (
-    <article className="rounded-2xl border border-slate-200 bg-white p-4 shadow-soft">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h2 className="truncate text-xl font-black text-slate-950">{title}</h2>
-          {subtitle ? <p className="mt-0.5 truncate text-sm font-semibold text-slate-600">{subtitle}</p> : null}
-          <p className="mt-2 text-base font-medium text-slate-700">{address}</p>
-          {!station.address ? (
-            <p className="mt-1 text-xs font-bold text-slate-400">
-              {station.lat.toFixed(6)}, {station.lon.toFixed(6)}
-            </p>
-          ) : null}
-        </div>
-
-        {station.distanceKm != null ? (
-          <div className="shrink-0 rounded-xl bg-slate-950 px-3 py-2 text-right text-white">
-            <div className="text-lg font-black">{formatDistance(station.distanceKm)}</div>
-            <div className="text-xs font-bold text-slate-300">км</div>
-          </div>
-        ) : null}
-      </div>
-
-      {(routeDistanceLabel || routeDeviationLabel) ? (
-        <div className="mt-3 grid gap-2 rounded-xl bg-road-50 p-3">
-          {routeDistanceLabel ? <InfoRow label="По маршруту" value={routeDistanceLabel} strong /> : null}
-          {routeDeviationLabel ? <InfoRow label="Положение" value={routeDeviationLabel} /> : null}
-        </div>
-      ) : null}
-
-      <div className="mt-4 flex flex-wrap gap-2">
-        <span className={`rounded-full px-3 py-2 text-sm font-black ${statusStyles[station.status]}`}>{station.statusLabel}</span>
-        <span
-          className={`rounded-full px-3 py-2 text-sm font-black ${
-            station.hasQueue ? "bg-orange-100 text-orange-900" : "bg-slate-100 text-slate-700"
-          }`}
-        >
-          {station.queueLabel}
-        </span>
-        <span className="rounded-full bg-road-100 px-3 py-2 text-sm font-black text-road-900">{station.freshnessLabel}</span>
-      </div>
-
-      <div className="mt-4 grid gap-3 rounded-xl bg-slate-50 p-3">
-        <InfoRow label="Топливо" value={station.fuels.length > 0 ? station.fuels.join(", ") : "Не указано"} />
-        <InfoRow label="Рекомендация" value={station.recommendation} strong />
-        {station.confidence != null ? <InfoRow label="Доверие" value={formatConfidence(station.confidence)} /> : null}
-        {station.confirmations != null ? <InfoRow label="Подтверждения" value={String(station.confirmations)} /> : null}
-        {station.rawDetail ? <InfoRow label="Детали" value={station.rawDetail} /> : null}
-      </div>
-
-      <div className="mt-4 grid grid-cols-1 gap-2 min-[380px]:grid-cols-2">
-        {/* TODO: add cached reverse geocoding later for stations without address. */}
-        <a
-          className="flex min-h-12 items-center justify-center rounded-xl bg-road-500 px-4 text-center text-base font-black text-white transition active:scale-[0.98]"
-          href={buildYandexMapsUrl(mapLocation)}
-          target="_blank"
-          rel="noreferrer"
-        >
-          Открыть в Яндекс Картах
-        </a>
-        <a
-          className="flex min-h-12 items-center justify-center rounded-xl bg-fuel-500 px-4 text-center text-base font-black text-white transition active:scale-[0.98]"
-          href={buildTwoGisUrl(mapLocation)}
-          target="_blank"
-          rel="noreferrer"
-        >
-          Открыть в 2ГИС
-        </a>
-      </div>
-    </article>
-  );
-}
-
-function InfoRow({ label, value, strong = false }: { label: string; value: string; strong?: boolean }) {
-  return (
-    <div className="grid gap-1">
-      <div className="text-xs font-black uppercase text-slate-500">{label}</div>
-      <div className={strong ? "text-base font-black text-slate-950" : "text-base font-semibold text-slate-800"}>{value}</div>
+  const location = { lat: station.lat, lon: station.lon };
+  const distance = station.distanceFromStartKm ?? station.distanceKm;
+  return <article className="group rounded-[28px] border border-white/80 bg-white/85 p-4 shadow-[0_18px_55px_rgba(15,23,42,.10)] backdrop-blur-xl transition hover:-translate-y-0.5 hover:shadow-xl">
+    <header className="flex gap-3">
+      <div className="grid h-14 w-14 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-emerald-400 to-road-600 text-2xl shadow-lg">⛽</div>
+      <div className="min-w-0 flex-1"><div className="flex items-start justify-between gap-2"><div><h2 className="truncate text-xl font-black text-slate-950">{title}</h2><p className="mt-1 line-clamp-2 text-sm font-semibold text-slate-500">{station.address || "Адрес не указан"}</p></div>{distance != null ? <div className="shrink-0 text-right"><div className="text-2xl font-black text-slate-950">{formatDistance(distance)}</div><div className="text-[10px] font-black uppercase text-slate-400">км по пути</div></div> : null}</div></div>
+    </header>
+    <div className="mt-4 grid grid-cols-2 gap-2">
+      <Metric label="Отклонение" value={formatDeviation(station.distanceFromRouteKm)} />
+      <Metric label="Данные" value={relativeTime(station.lastUpdatedAt)} />
     </div>
-  );
+    <div className="mt-3 flex flex-wrap gap-2">{station.fuels.length ? station.fuels.map((fuel) => <span key={fuel} className="rounded-full bg-emerald-100 px-3 py-1.5 text-xs font-black text-emerald-900">{fuel} ✓</span>) : <span className="rounded-full bg-slate-100 px-3 py-1.5 text-xs font-black text-slate-600">Топливо неизвестно</span>}<span className={`rounded-full px-3 py-1.5 text-xs font-black ${station.hasQueue ? "bg-orange-100 text-orange-900" : "bg-sky-100 text-sky-900"}`}>{station.hasQueue ? "Очередь" : "Без очереди"}</span><span className="rounded-full bg-slate-100 px-3 py-1.5 text-xs font-black text-slate-600">{station.freshnessLabel}</span></div>
+    <div className="mt-4 rounded-2xl bg-slate-950 p-3 text-sm font-bold text-slate-200">{station.recommendation}</div>
+    <div className="mt-3 grid grid-cols-2 gap-2"><a className="flex min-h-12 items-center justify-center rounded-2xl bg-road-500 px-3 text-center text-sm font-black text-white active:scale-95" href={buildYandexMapsUrl(location)} target="_blank" rel="noreferrer">Маршрут</a><a className="flex min-h-12 items-center justify-center rounded-2xl bg-slate-100 px-3 text-center text-sm font-black text-slate-900 active:scale-95" href={buildTwoGisUrl(location)} target="_blank" rel="noreferrer">Открыть в 2ГИС</a></div>
+  </article>;
 }
-
-function formatDistance(value: number): string {
-  if (value < 10) {
-    return value.toFixed(1);
-  }
-
-  return Math.round(value).toString();
-}
-
-function formatConfidence(value: number): string {
-  if (value <= 1) {
-    return `${Math.round(value * 100)}%`;
-  }
-
-  return `${Math.round(value)}%`;
-}
+function Metric({ label, value }: { label: string; value: string }) { return <div className="rounded-2xl bg-slate-100 p-3"><div className="text-base font-black text-slate-950">{value}</div><div className="mt-1 text-[10px] font-black uppercase tracking-wide text-slate-500">{label}</div></div>; }
+function formatDistance(value: number): string { return value < 10 ? value.toFixed(1) : String(Math.round(value)); }
+function formatDeviation(value?: number | null): string { if (value == null) return "—"; return value < 1 ? `${Math.round(value * 1000)} м` : `${value.toFixed(1)} км`; }
+function relativeTime(value: string | null): string { if (!value) return "Неизвестно"; const minutes = Math.max(0, Math.round((Date.now() - new Date(value).getTime()) / 60000)); return minutes < 60 ? `${minutes} мин назад` : `${Math.round(minutes / 60)} ч назад`; }

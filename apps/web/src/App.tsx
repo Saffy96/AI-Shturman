@@ -2,9 +2,10 @@ import { buildNavigatorAdvice, hasRequestedFuel } from "@ai-shturman/shared";
 import { useEffect, useMemo, useRef, useState, type Dispatch, type FormEvent, type SetStateAction } from "react";
 import { FiltersPanel } from "./components/FiltersPanel";
 import { Header } from "./components/Header";
-import { Map } from "./components/Map";
+import { MapContainer } from "./components/MapContainer";
 import { NavigatorAdviceCard } from "./components/NavigatorAdviceCard";
 import { RouteForm } from "./components/RouteForm";
+import { formatDuration, RouteSummary } from "./components/RouteSummary";
 import { StationCard } from "./components/StationCard";
 import { SummaryCard } from "./components/SummaryCard";
 import { GeolocationRequestError, useGeolocation } from "./hooks/useGeolocation";
@@ -85,6 +86,7 @@ export function App() {
   const [selectedLocation, setSelectedLocation] = useState<SelectedLocation | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isBuildingRoute, setIsBuildingRoute] = useState(false);
+  const [loadingPhase, setLoadingPhase] = useState<"route" | "stations" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isManualFormOpen, setIsManualFormOpen] = useState(false);
   const [manualLat, setManualLat] = useState("");
@@ -170,6 +172,7 @@ export function App() {
 
     setError(null);
     setRouteFallbackHint(null);
+    setLoadingPhase("route");
 
     try {
       const points = await buildRoutePoints();
@@ -196,6 +199,7 @@ export function App() {
       setError(getReadableError(requestError, isOnline));
     } finally {
       setIsLoading(false);
+      setLoadingPhase(null);
     }
   }
 
@@ -225,6 +229,7 @@ export function App() {
     }
 
     setIsLoading(true);
+    setLoadingPhase("stations");
 
     try {
       if (isRouteMode) {
@@ -276,6 +281,7 @@ export function App() {
       setError(getReadableError(requestError, isOnline));
     } finally {
       setIsLoading(false);
+      setLoadingPhase(null);
     }
   }
 
@@ -349,7 +355,7 @@ export function App() {
     <div className="min-h-screen pb-[calc(24px+env(safe-area-inset-bottom))]">
       <Header />
 
-      <main className="mx-auto grid max-w-xl gap-4 px-4">
+      <main className="mx-auto grid max-w-3xl gap-4 px-3 sm:px-4">
         {!isOnline ? <Notice tone="danger" text="Нет интернета. Данные можно обновить после восстановления связи." /> : null}
 
         <ModeSwitch selectedMode={selectedMode} onChange={handleModeChange} />
@@ -366,6 +372,7 @@ export function App() {
         />
 
         {isRouteMode && routePoints ? <RouteInfo points={routePoints} route={routeData} stationCount={filteredStations.length} /> : null}
+        {routeData?.mode === "route_real" && routeData.route ? <RouteSummary route={routeData} stationCount={filteredStations.length} /> : null}
 
         <section className="rounded-2xl border border-road-100 bg-white p-4 shadow-soft">
           <div className="grid grid-cols-2 gap-3">
@@ -483,10 +490,10 @@ export function App() {
 
         {routeWarning && isRouteMode ? <Notice tone="neutral" text={routeWarning} /> : null}
 
-        {isLoading ? <LoadingState /> : null}
+        {loadingPhase ? <LoadingState phase={loadingPhase} /> : null}
 
         {routePoints || selectedLocation || data ? (
-          <Map
+          <MapContainer
             from={routePoints?.from}
             to={routePoints?.to}
             location={!isRouteMode ? selectedLocation?.coords : null}
@@ -517,7 +524,7 @@ export function App() {
         {data && data.stations.length > 0 && filteredStations.length === 0 && !isLoading ? <FilterEmptyState /> : null}
 
         {filteredStations.length > 0 ? (
-          <section className="grid gap-3">
+          <section className="grid gap-3 pb-4 max-sm:rounded-t-[32px] max-sm:bg-slate-100/95 max-sm:p-3 max-sm:shadow-[0_-20px_60px_rgba(15,23,42,.14)] max-sm:backdrop-blur-xl">
             {filteredStations.map((station) => (
               <StationCard key={station.id} station={station} />
             ))}
@@ -587,7 +594,7 @@ function RouteInfo({
       {route?.mode === "route_real" && route.route ? (
         <div className="mt-3 grid grid-cols-2 gap-3 min-[420px]:grid-cols-4">
           <MetricTile label="Дистанция" value={`${formatDistance(route.route.distanceKm)} км`} />
-          <MetricTile label="Время" value={`${route.route.durationMin} мин`} />
+          <MetricTile label="Время" value={formatDuration(route.route.durationMin)} />
           <MetricTile label="АЗС" value={String(stationCount)} />
           <MetricTile label="Коридор" value={`${route.corridorKm} км`} />
         </div>
@@ -771,11 +778,12 @@ function Notice({ text, tone }: { text: string; tone: "danger" | "neutral" }) {
   return <div className={`rounded-2xl border p-4 text-base font-bold shadow-soft ${className}`}>{text}</div>;
 }
 
-function LoadingState() {
+function LoadingState({ phase }: { phase: "route" | "stations" }) {
   return (
     <div className="rounded-2xl border border-road-100 bg-white p-5 text-center shadow-soft">
       <div className="mx-auto h-10 w-10 animate-spin rounded-full border-4 border-road-100 border-t-road-500" />
-      <div className="mt-3 text-lg font-black text-road-900">Ищем АЗС</div>
+      <div className="mt-3 text-lg font-black text-road-900">{phase === "route" ? "Строим оптимальный маршрут" : "Ищем АЗС по пути"}</div>
+      <div className="mt-1 text-sm font-semibold text-slate-500">{phase === "route" ? "Получаем дорожную геометрию и время в пути" : "Проверяем топливо и свежесть данных"}</div>
     </div>
   );
 }
