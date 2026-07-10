@@ -141,9 +141,11 @@ async function fetchOrsGeocode(query: string): Promise<GeoSearchResult[]> {
   }
 
   const url = new URL("/geocode/search", env.openRouteServiceBaseUrl);
+  url.searchParams.set("api_key", env.openRouteServiceApiKey);
   url.searchParams.set("text", query);
   url.searchParams.set("size", "5");
   url.searchParams.set("boundary.country", "RU");
+  url.searchParams.set("lang", "ru");
 
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), env.openRouteServiceTimeoutMs);
@@ -152,8 +154,7 @@ async function fetchOrsGeocode(query: string): Promise<GeoSearchResult[]> {
     const response = await fetch(url.toString(), {
       method: "GET",
       headers: {
-        accept: "application/json",
-        authorization: env.openRouteServiceApiKey
+        accept: "application/json"
       },
       signal: controller.signal
     });
@@ -163,6 +164,8 @@ async function fetchOrsGeocode(query: string): Promise<GeoSearchResult[]> {
     }
 
     if (!response.ok) {
+      const responseBody = await safeReadResponseBody(response);
+      logOrsGeocodeError(response.status, url, responseBody);
       throw serviceError(`OpenRouteService geocoding responded with HTTP ${response.status}`, response.status);
     }
 
@@ -214,6 +217,25 @@ function normalizeOrsFeature(feature: OrsGeocodeFeature, query: string): GeoSear
     lat,
     lon
   };
+}
+
+async function safeReadResponseBody(response: Response): Promise<string> {
+  try {
+    return await response.text();
+  } catch {
+    return "<failed to read body>";
+  }
+}
+
+function logOrsGeocodeError(status: number, url: URL, responseBody: string): void {
+  const safeUrl = new URL(url.toString());
+  safeUrl.searchParams.delete("api_key");
+
+  console.error("[geo][ors]", {
+    status,
+    url: safeUrl.toString(),
+    responseBody
+  });
 }
 
 function delay(ms: number): Promise<void> {
