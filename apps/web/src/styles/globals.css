@@ -27,6 +27,35 @@ body {
     #f7faf9;
 }
 
+.car-panel > section,
+.car-panel > div,
+.car-panel > button {
+  border-color: rgba(255, 255, 255, 0.08) !important;
+}
+
+.car-panel select,
+.car-panel input {
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+.car-panel > section,
+.car-panel article {
+  background-color: rgba(16, 21, 29, 0.88) !important;
+  color: #fff;
+  backdrop-filter: blur(20px);
+}
+
+.car-panel article h2 { color: #fff !important; }
+.car-panel article p { color: #8a94a6 !important; }
+
+.ymaps-2-1-79-map { filter: saturate(.8) contrast(1.05) brightness(.82); }
+[class*="placemark-overlay"] { animation: marker-pulse 2.4s ease-in-out infinite; }
+
+@keyframes marker-pulse {
+  0%, 100% { filter: drop-shadow(0 0 0 rgba(0, 230, 118, 0)); }
+  50% { filter: drop-shadow(0 0 8px rgba(0, 230, 118, .75)); }
+}
+
 body::before {
   position: fixed;
   inset: 0;

@@ -1,12 +1,11 @@
 import { buildNavigatorAdvice, hasRequestedFuel } from "@ai-shturman/shared";
 import { useEffect, useMemo, useRef, useState, type Dispatch, type FormEvent, type SetStateAction } from "react";
 import { FiltersPanel } from "./components/FiltersPanel";
-import { Header } from "./components/Header";
-import { MapContainer } from "./components/MapContainer";
+import { CarShell, DrivePanel, MapContainer, NavigationCard } from "./components/CarShell";
 import { NavigatorAdviceCard } from "./components/NavigatorAdviceCard";
 import { RouteForm } from "./components/RouteForm";
 import { formatDuration, RouteSummary } from "./components/RouteSummary";
-import { StationCard } from "./components/StationCard";
+import { FuelStationCard } from "./components/FuelStationCard";
 import { SummaryCard } from "./components/SummaryCard";
 import { GeolocationRequestError, useGeolocation } from "./hooks/useGeolocation";
 import { useNetworkStatus } from "./hooks/useNetworkStatus";
@@ -352,13 +351,19 @@ export function App() {
   }
 
   return (
-    <div className="min-h-screen pb-[calc(24px+env(safe-area-inset-bottom))]">
-      <Header />
-
-      <main className="mx-auto grid max-w-3xl gap-4 px-3 sm:px-4">
+    <CarShell
+      online={isOnline}
+      gpsReady={Boolean(geolocation.location)}
+      accuracy={geolocation.location?.accuracy}
+      drivePanel={<DrivePanel route={routeData} next={filteredStations[0]} />}
+      map={<MapContainer from={routePoints?.from} to={routePoints?.to} location={!isRouteMode ? selectedLocation?.coords : null} route={routeData?.route?.geometry} stations={filteredStations} zoom={mapZoom} onZoomChange={setMapZoom} />}
+    >
+      <main className="car-panel mx-auto grid max-w-3xl gap-3">
         {!isOnline ? <Notice tone="danger" text="Нет интернета. Данные можно обновить после восстановления связи." /> : null}
 
         <ModeSwitch selectedMode={selectedMode} onChange={handleModeChange} />
+
+        {isRouteMode && !routePoints && !loadingPhase && !error ? <NavigationCard state="empty" /> : null}
 
         <RouteForm
           from={fromPoint}
@@ -478,7 +483,7 @@ export function App() {
           />
         ) : null}
 
-        {error ? <Notice tone="danger" text={error} /> : null}
+        {error ? <><NavigationCard state="error" onRetry={handleBuildRoute} /><Notice tone="danger" text={error} /></> : null}
 
         {routeFallbackHint && isRouteMode ? (
           <RouteFallbackCard
@@ -490,19 +495,7 @@ export function App() {
 
         {routeWarning && isRouteMode ? <Notice tone="neutral" text={routeWarning} /> : null}
 
-        {loadingPhase ? <LoadingState phase={loadingPhase} /> : null}
-
-        {routePoints || selectedLocation || data ? (
-          <MapContainer
-            from={routePoints?.from}
-            to={routePoints?.to}
-            location={!isRouteMode ? selectedLocation?.coords : null}
-            route={routeData?.route?.geometry}
-            stations={filteredStations}
-            zoom={mapZoom}
-            onZoomChange={setMapZoom}
-          />
-        ) : null}
+        {loadingPhase ? <NavigationCard state="loading" /> : null}
 
         {data ? <SummaryCard summary={displaySummary} fuel={fuel} /> : null}
         {data ? <FiltersPanel filters={filters} onChange={setFilters} /> : null}
@@ -525,13 +518,13 @@ export function App() {
 
         {filteredStations.length > 0 ? (
           <section className="grid gap-3 pb-4 max-sm:rounded-t-[32px] max-sm:bg-slate-100/95 max-sm:p-3 max-sm:shadow-[0_-20px_60px_rgba(15,23,42,.14)] max-sm:backdrop-blur-xl">
-            {filteredStations.map((station) => (
-              <StationCard key={station.id} station={station} />
+            {filteredStations.map((station, index) => (
+              <FuelStationCard key={station.id} station={station} index={index} />
             ))}
           </section>
         ) : null}
       </main>
-    </div>
+    </CarShell>
   );
 }
 

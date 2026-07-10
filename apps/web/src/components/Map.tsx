@@ -13,14 +13,13 @@ export function Map({ from, to, location, route = [], stations, zoom, onZoomChan
     const bounds = points.reduce((b, p) => [[Math.min(b[0][0], p.lat), Math.min(b[0][1], p.lon)], [Math.max(b[1][0], p.lat), Math.max(b[1][1], p.lon)]], [[points[0].lat, points[0].lon], [points[0].lat, points[0].lon]]);
     mapRef.current.setBounds(bounds, { checkZoomRange: true, zoomMargin: 42 });
   }, [from?.lat, to?.lat, location?.lat, route.length, stations.length]);
-  return <section className="overflow-hidden rounded-2xl border border-road-100 bg-white shadow-soft">
-    <div className="px-4 py-3 text-lg font-black">Карта</div>
-    <YMaps query={{ apikey: import.meta.env.VITE_YANDEX_MAPS_API_KEY ?? "", lang: "ru_RU" }}><YandexMap instanceRef={(v) => { mapRef.current = v; }} state={{ center, zoom }} width="100%" height="420px" onBoundsChange={(e: any) => onZoomChange(Math.round(e.get("newZoom")))}>
+  return <section className="h-full w-full overflow-hidden bg-[#05070b]">
+    <YMaps query={{ apikey: import.meta.env.VITE_YANDEX_MAPS_API_KEY ?? "", lang: "ru_RU" }}><YandexMap instanceRef={(v) => { mapRef.current = v; }} state={{ center, zoom }} width="100%" height="100%" onBoundsChange={(e: any) => onZoomChange(Math.round(e.get("newZoom")))}>
       {route.length > 1 ? <Polyline geometry={route.map((p) => [p.lat, p.lon])} options={{ strokeColor: "#0f766e", strokeWidth: 5 }} /> : null}
       {from ? <Placemark geometry={[from.lat, from.lon]} properties={{ iconCaption: `🚩 ${from.name}`, balloonContent: from.address }} /> : null}
       {to ? <Placemark geometry={[to.lat, to.lon]} properties={{ iconCaption: `🏁 ${to.name}`, balloonContent: to.address }} /> : null}
       {location ? <Placemark geometry={[location.lat, location.lon]} properties={{ iconCaption: "📍 Вы здесь" }} /> : null}
-      {stations.map((s) => <Placemark key={s.id} geometry={[s.lat, s.lon]} properties={{ iconCaption: "⛽", balloonContentHeader: s.brand || s.name || "АЗС", balloonContentBody: stationBalloon(s) }} options={{ preset: s.hasRequestedFuel ? "islands#greenFuelStationIcon" : "islands#grayFuelStationIcon" }} modules={["geoObject.addon.balloon"]} />)}
+      {stations.map((s) => <Placemark key={s.id} geometry={[s.lat, s.lon]} properties={{ iconContent: "⛽", balloonContentHeader: s.brand || s.name || "АЗС", balloonContentBody: stationBalloon(s) }} options={{ preset: "islands#circleIcon", iconColor: s.status === "no" ? "#ff5252" : s.hasRequestedFuel ? "#00e676" : "#64748b" }} modules={["geoObject.addon.balloon"]} />)}
     </YandexMap></YMaps>
   </section>;
 }
