@@ -59,6 +59,7 @@ export interface NearbyFuelResponse {
 }
 
 export interface GeoSearchResult {
+  title?: string;
   name: string;
   address: string;
   lat: number;

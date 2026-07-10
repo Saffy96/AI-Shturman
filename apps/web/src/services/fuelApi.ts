@@ -1,5 +1,6 @@
 import type {
   GeoSearchResponse,
+  GeoSearchResult,
   NearbyFuelParams,
   NearbyFuelResponse,
   RouteFuelParams,
@@ -65,6 +66,14 @@ export async function searchGeo(query: string): Promise<GeoSearchResponse> {
   url.searchParams.set("q", query);
 
   return requestJson<GeoSearchResponse>(url);
+}
+
+export async function reverseGeo(lat: number, lon: number): Promise<GeoSearchResult> {
+  const url = new URL("/api/geo/reverse", API_BASE_URL);
+  url.searchParams.set("lat", String(lat));
+  url.searchParams.set("lon", String(lon));
+  const payload = await requestJson<{ ok: true; result: GeoSearchResult }>(url);
+  return payload.result;
 }
 
 async function requestJson<T extends { ok: true }>(url: URL): Promise<T> {

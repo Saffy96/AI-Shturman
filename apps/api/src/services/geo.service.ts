@@ -17,7 +17,7 @@ export async function searchGeo(query: string): Promise<GeoSearchResponse> {
     }
     cache.set(key, results);
   }
-  return { ok: true, query: normalized, results };
+  return { ok: true, query: normalized, results: results.map((item) => ({ ...item, title: item.name })) };
 }
 
 export async function reverseGeo(lat: number, lon: number): Promise<GeoSearchResult> {

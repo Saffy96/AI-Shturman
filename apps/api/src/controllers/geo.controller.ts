@@ -15,7 +15,8 @@ export async function reverseGeoController(req: Request, res: Response, next: Ne
   try {
     const lat = Number(req.query.lat); const lon = Number(req.query.lon);
     if (!Number.isFinite(lat) || !Number.isFinite(lon)) throw validationError("lat and lon are required");
-    res.json({ ok: true, result: await reverseGeo(lat, lon) });
+    const result = await reverseGeo(lat, lon);
+    res.json({ ok: true, address: result.address, lat: result.lat, lon: result.lon, result });
   } catch (error) { next(error); }
 }
 

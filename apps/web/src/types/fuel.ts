@@ -20,6 +20,12 @@ export type QueueFilter = "all" | "withoutQueue" | "onlyQueue";
 export type FreshnessFilter = "all" | "fresh" | "freshOrMedium" | "hideOld";
 export type StatusFilter = "all" | "yes" | "low" | "no" | "unknown";
 
+export interface RouteLocation extends GeoSearchResult {
+  type: "gps" | "address" | "map";
+  text: string;
+  accuracy?: number;
+}
+
 export interface StationFilters {
   availability: AvailabilityFilter;
   queue: QueueFilter;

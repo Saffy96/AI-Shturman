@@ -9,7 +9,7 @@ import { StationCard } from "./components/StationCard";
 import { SummaryCard } from "./components/SummaryCard";
 import { GeolocationRequestError, useGeolocation } from "./hooks/useGeolocation";
 import { useNetworkStatus } from "./hooks/useNetworkStatus";
-import { FuelApiError, fetchNearbyFuel, fetchRouteFuel, searchGeo } from "./services/fuelApi";
+import { FuelApiError, fetchNearbyFuel, fetchRouteFuel } from "./services/fuelApi";
 import type {
   Coordinates,
   FilteredSummary,
@@ -19,6 +19,7 @@ import type {
   GeoSearchResult,
   NearbyFuelResponse,
   RouteFuelResponse,
+  RouteLocation,
   SearchMode,
   StationFilters
 } from "./types/fuel";
@@ -59,8 +60,10 @@ const locationSourceLabels: Record<LocationSource, string> = {
 };
 
 export function App() {
-  const [from, setFrom] = useStoredState("ai-shturman:from", "", normalizeString);
-  const [to, setTo] = useStoredState("ai-shturman:to", "", normalizeString);
+  const [fromPoint, setFromPoint] = useStoredState<RouteLocation | null>("ai-shturman:from", null, normalizeRouteLocation);
+  const [toPoint, setToPoint] = useStoredState<RouteLocation | null>("ai-shturman:to", null, normalizeRouteLocation);
+  const from = fromPoint?.text ?? "";
+  const to = toPoint?.text ?? "";
   const [selectedMode, setSelectedMode] = useStoredState<SearchMode>("ai-shturman:selectedMode", "nearby", normalizeMode);
   const [radiusKm, setRadiusKm] = useStoredState<(typeof radiusOptions)[number]>(
     "ai-shturman:radiusKm",
@@ -93,7 +96,7 @@ export function App() {
   const geolocation = useGeolocation();
   const isOnline = useNetworkStatus();
   const isRouteMode = selectedMode === "route";
-  const canBuildRoute = Boolean(from.trim() && to.trim());
+  const canBuildRoute = Boolean(fromPoint && toPoint);
   const canRequestStations = isRouteMode ? Boolean(routePoints) : Boolean(selectedLocation);
   const allStations = data?.stations ?? [];
   const filteredStations = useMemo(() => applyStationFilters(allStations, filters, fuel), [allStations, filters, fuel]);
@@ -281,28 +284,13 @@ export function App() {
       return routeBuildPromiseRef.current;
     }
 
-    const fromQuery = from.trim();
-    const toQuery = to.trim();
-
-    if (!fromQuery || !toQuery) {
+    if (!fromPoint || !toPoint) {
       throw new Error("Введите точки Откуда и Куда.");
     }
 
     const request = (async () => {
       setIsBuildingRoute(true);
-      const [fromResponse, toResponse] = await Promise.all([searchGeo(fromQuery), searchGeo(toQuery)]);
-      const fromResult = fromResponse.results[0];
-      const toResult = toResponse.results[0];
-
-      if (!fromResult) {
-        throw new Error(`Точка не найдена: ${fromQuery}`);
-      }
-
-      if (!toResult) {
-        throw new Error(`Точка не найдена: ${toQuery}`);
-      }
-
-      const points = { from: fromResult, to: toResult };
+      const points = { from: fromPoint, to: toPoint };
       setRoutePoints(points);
       setRouteWarning("Маршрутные точки найдены. Дальше можно проверить АЗС вдоль реального маршрута.");
       setRouteFallbackHint(null);
@@ -336,13 +324,13 @@ export function App() {
     setError(null);
   }
 
-  function handleFromChange(value: string) {
-    setFrom(value);
+  function handleFromChange(value: RouteLocation) {
+    setFromPoint(value);
     resetRouteIfNeeded();
   }
 
-  function handleToChange(value: string) {
-    setTo(value);
+  function handleToChange(value: RouteLocation) {
+    setToPoint(value);
     resetRouteIfNeeded();
   }
 
@@ -367,12 +355,13 @@ export function App() {
         <ModeSwitch selectedMode={selectedMode} onChange={handleModeChange} />
 
         <RouteForm
-          from={from}
-          to={to}
+          from={fromPoint}
+          to={toPoint}
           isRouteMode={isRouteMode}
           isBuildingRoute={isBuildingRoute}
           onFromChange={handleFromChange}
           onToChange={handleToChange}
+          onSwap={() => { setFromPoint(toPoint); setToPoint(fromPoint); resetRouteIfNeeded(); }}
           onBuildRoute={handleBuildRoute}
         />
 
@@ -972,8 +961,12 @@ function useStoredState<T>(
   return [value, setValue];
 }
 
-function normalizeString(value: unknown): string | null {
-  return typeof value === "string" ? value : null;
+function normalizeRouteLocation(value: unknown): RouteLocation | null {
+  if (!value || typeof value !== "object") return null;
+  const point = value as Partial<RouteLocation>;
+  if (!Number.isFinite(point.lat) || !Number.isFinite(point.lon) || typeof point.text !== "string" || typeof point.address !== "string") return null;
+  if (point.type !== "gps" && point.type !== "address" && point.type !== "map") return null;
+  return { type: point.type, text: point.text, name: point.name || point.text, address: point.address, lat: Number(point.lat), lon: Number(point.lon), ...(typeof point.accuracy === "number" ? { accuracy: point.accuracy } : {}) };
 }
 
 function normalizeMode(value: unknown): SearchMode | null {
