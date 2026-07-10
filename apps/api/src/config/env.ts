@@ -5,6 +5,8 @@ export const env = {
   frontendOrigin: process.env.FRONTEND_ORIGIN ?? "http://localhost:5173",
   gdebenzBaseUrl: process.env.GDEBENZ_BASE_URL ?? "https://gdebenz.ru/api",
   gdebenzTimeoutMs: getNumberEnv("GDEBENZ_TIMEOUT_MS", 8_000),
+  yandexApiKey: process.env.YANDEX_API_KEY ?? "",
+  yandexTimeoutMs: getNumberEnv("YANDEX_TIMEOUT_MS", 10_000),
   openRouteServiceBaseUrl: process.env.OPENROUTESERVICE_BASE_URL ?? "https://api.openrouteservice.org",
   openRouteServiceApiKey: process.env.OPENROUTESERVICE_API_KEY ?? "",
   openRouteServiceTimeoutMs: getNumberEnv("OPENROUTESERVICE_TIMEOUT_MS", 12_000),

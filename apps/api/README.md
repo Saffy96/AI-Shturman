@@ -44,6 +44,7 @@ GDEBENZ_BASE_URL=https://gdebenz.ru/api
 GDEBENZ_TIMEOUT_MS=8000
 OPENROUTESERVICE_BASE_URL=https://api.openrouteservice.org
 OPENROUTESERVICE_API_KEY=your_openrouteservice_api_key
+YANDEX_API_KEY=your_yandex_geocoder_api_key
 OPENROUTESERVICE_TIMEOUT_MS=12000
 CACHE_TTL_MS=60000
 ```

@@ -25,6 +25,7 @@ export interface StationFilters {
   queue: QueueFilter;
   freshness: FreshnessFilter;
   status: StatusFilter;
+  deviation: "all" | "max2";
 }
 
 export interface FilteredSummary {

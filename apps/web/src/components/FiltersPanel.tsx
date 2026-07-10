@@ -58,6 +58,13 @@ export function FiltersPanel({ filters, onChange }: FiltersPanelProps) {
           ]}
           onChange={(status) => onChange({ ...filters, status })}
         />
+
+        <FilterSelect
+          label="Отклонение"
+          value={filters.deviation}
+          options={[["all", "Любое"], ["max2", "Не более 2 км"]]}
+          onChange={(deviation) => onChange({ ...filters, deviation })}
+        />
       </div>
     </section>
   );

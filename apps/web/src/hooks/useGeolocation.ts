@@ -21,8 +21,10 @@ export class GeolocationRequestError extends Error {
   }
 }
 
+export interface AccurateCoordinates extends Coordinates { accuracy: number; }
+
 export function useGeolocation() {
-  const [location, setLocation] = useState<Coordinates | null>(null);
+  const [location, setLocation] = useState<AccurateCoordinates | null>(null);
   const [status, setStatus] = useState<GeolocationStatus>("idle");
 
   const requestLocation = useCallback(() => {
@@ -43,12 +45,13 @@ export function useGeolocation() {
 
     setStatus("loading");
 
-    return new Promise<Coordinates>((resolve, reject) => {
+    return new Promise<AccurateCoordinates>((resolve, reject) => {
       navigator.geolocation.getCurrentPosition(
         (position) => {
           const coords = {
             lat: position.coords.latitude,
-            lon: position.coords.longitude
+            lon: position.coords.longitude,
+            accuracy: position.coords.accuracy
           };
 
           setLocation(coords);
@@ -61,9 +64,9 @@ export function useGeolocation() {
           reject(error);
         },
         {
-          enableHighAccuracy: false,
-          timeout: 30_000,
-          maximumAge: 60_000
+          enableHighAccuracy: true,
+          timeout: 10_000,
+          maximumAge: 0
         }
       );
     });

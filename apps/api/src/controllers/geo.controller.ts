@@ -1,5 +1,5 @@
 import type { NextFunction, Request, Response } from "express";
-import { searchGeo } from "../services/geo.service.js";
+import { reverseGeo, searchGeo } from "../services/geo.service.js";
 
 export async function searchGeoController(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
@@ -9,6 +9,14 @@ export async function searchGeoController(req: Request, res: Response, next: Nex
   } catch (error) {
     next(error);
   }
+}
+
+export async function reverseGeoController(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const lat = Number(req.query.lat); const lon = Number(req.query.lon);
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) throw validationError("lat and lon are required");
+    res.json({ ok: true, result: await reverseGeo(lat, lon) });
+  } catch (error) { next(error); }
 }
 
 function parseQuery(value: unknown): string {

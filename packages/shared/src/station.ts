@@ -83,6 +83,7 @@ export interface RouteFuelResponse {
     distanceKm: number;
     durationMin: number;
     geometryPointsCount: number;
+    geometry: Coordinates[];
   };
   stations: NormalizedFuelStation[];
   summary: FuelSummary;

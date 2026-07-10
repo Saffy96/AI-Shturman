@@ -159,7 +159,8 @@ export async function getRouteFuelReal(params: RouteFuelParams): Promise<RouteFu
     route: {
       distanceKm: route.distanceKm,
       durationMin: route.durationMin,
-      geometryPointsCount: route.geometry.length
+      geometryPointsCount: route.geometry.length,
+      geometry: route.geometry
     },
     stations,
     summary: buildSummary(stations),

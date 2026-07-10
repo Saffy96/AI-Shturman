@@ -2,6 +2,7 @@ import { buildNavigatorAdvice, hasRequestedFuel } from "@ai-shturman/shared";
 import { useEffect, useMemo, useRef, useState, type Dispatch, type FormEvent, type SetStateAction } from "react";
 import { FiltersPanel } from "./components/FiltersPanel";
 import { Header } from "./components/Header";
+import { Map } from "./components/Map";
 import { NavigatorAdviceCard } from "./components/NavigatorAdviceCard";
 import { RouteForm } from "./components/RouteForm";
 import { StationCard } from "./components/StationCard";
@@ -23,13 +24,14 @@ import type {
 } from "./types/fuel";
 
 const radiusOptions = [20, 50, 100] as const;
-const corridorOptions = [2, 5, 10, 20] as const;
+const corridorOptions = [5, 10, 20, 50] as const;
 const fuelOptions: FuelType[] = ["92", "95", "98", "100", "ДТ"];
 const defaultFilters: StationFilters = {
   availability: "all",
   queue: "all",
   freshness: "all",
-  status: "all"
+  status: "all",
+  deviation: "all"
 };
 const kazanLocation: Coordinates = {
   lat: 55.796127,
@@ -71,6 +73,7 @@ export function App() {
     normalizeCorridor
   );
   const [fuel, setFuel] = useStoredState<FuelType>("ai-shturman:selectedFuel", "95", normalizeFuel);
+  const [mapZoom, setMapZoom] = useStoredState("ai-shturman:mapZoom", 8, normalizeMapZoom);
   const [filters, setFilters] = useStoredState<StationFilters>("ai-shturman:filters", defaultFilters, normalizeFilters);
   const [data, setData] = useState<FuelResponse | null>(null);
   const [routePoints, setRoutePoints] = useState<RoutePoints | null>(null);
@@ -166,9 +169,30 @@ export function App() {
     setRouteFallbackHint(null);
 
     try {
-      await buildRoutePoints();
+      const points = await buildRoutePoints();
+      setIsLoading(true);
+      const response = await fetchRouteFuel({
+        from,
+        to,
+        corridorKm,
+        fuel,
+        mode: "real",
+        fromLat: points.from.lat,
+        fromLon: points.from.lon,
+        toLat: points.to.lat,
+        toLon: points.to.lon
+      });
+      setData(response);
+      setRoutePoints({ from: response.from, to: response.to });
+      setRouteWarning(response.warning ?? null);
+      setIsAdviceVisible(true);
     } catch (requestError) {
+      if (shouldOfferApproximateFallback(requestError)) {
+        setRouteFallbackHint("Реальный маршрут недоступен. Можно использовать приблизительный режим.");
+      }
       setError(getReadableError(requestError, isOnline));
+    } finally {
+      setIsLoading(false);
     }
   }
 
@@ -395,6 +419,12 @@ export function App() {
             <div className="text-xs font-black uppercase text-road-600">Текущая позиция</div>
             <div className="mt-1 text-base font-black text-road-900">{locationLabel}</div>
             <div className="mt-1 text-sm font-bold text-slate-600">Источник: {sourceLabel}</div>
+            {selectedLocation?.source === "browser" && geolocation.location ? (
+              <div className={`mt-2 text-sm font-black ${geolocation.location.accuracy <= 100 ? "text-emerald-700" : "text-amber-700"}`}>
+                {geolocation.location.accuracy <= 100 ? "📍 Вы здесь" : `⚠ Точность ${Math.round(geolocation.location.accuracy)} метров`}<br />
+                {geolocation.location.accuracy <= 100 ? `Точность: ${Math.round(geolocation.location.accuracy)} метров ✅` : "Выберите точку вручную"}
+              </div>
+            ) : null}
           </div>
 
           {!canRequestStations ? (
@@ -411,7 +441,7 @@ export function App() {
                 onClick={handleLocationRequest}
                 disabled={geolocation.isLocating || isLoading}
               >
-                📍 {geolocation.isLocating ? "Получаем..." : "Получить геопозицию"}
+                📍 {geolocation.isLocating ? "Получаем..." : "Моё местоположение"}
               </button>
             ) : null}
 
@@ -465,6 +495,18 @@ export function App() {
         {routeWarning && isRouteMode ? <Notice tone="neutral" text={routeWarning} /> : null}
 
         {isLoading ? <LoadingState /> : null}
+
+        {routePoints || selectedLocation || data ? (
+          <Map
+            from={routePoints?.from}
+            to={routePoints?.to}
+            location={!isRouteMode ? selectedLocation?.coords : null}
+            route={routeData?.route?.geometry}
+            stations={filteredStations}
+            zoom={mapZoom}
+            onZoomChange={setMapZoom}
+          />
+        ) : null}
 
         {data ? <SummaryCard summary={displaySummary} fuel={fuel} /> : null}
         {data ? <FiltersPanel filters={filters} onChange={setFilters} /> : null}
@@ -810,6 +852,10 @@ function applyStationFilters(stations: FuelStation[], filters: StationFilters, f
       return false;
     }
 
+    if (filters.deviation === "max2" && (station.distanceFromRouteKm ?? 0) > 2) {
+      return false;
+    }
+
     return true;
   });
 }
@@ -946,6 +992,10 @@ function normalizeCorridor(value: unknown): (typeof corridorOptions)[number] | n
     : null;
 }
 
+function normalizeMapZoom(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) && value >= 1 && value <= 19 ? value : null;
+}
+
 function normalizeFuel(value: unknown): FuelType | null {
   return typeof value === "string" && fuelOptions.includes(value as FuelType) ? (value as FuelType) : null;
 }
@@ -961,7 +1011,8 @@ function normalizeFilters(value: unknown): StationFilters | null {
     availability: isAvailabilityFilter(maybeFilters.availability) ? maybeFilters.availability : defaultFilters.availability,
     queue: isQueueFilter(maybeFilters.queue) ? maybeFilters.queue : defaultFilters.queue,
     freshness: isFreshnessFilter(maybeFilters.freshness) ? maybeFilters.freshness : defaultFilters.freshness,
-    status: isStatusFilter(maybeFilters.status) ? maybeFilters.status : defaultFilters.status
+    status: isStatusFilter(maybeFilters.status) ? maybeFilters.status : defaultFilters.status,
+    deviation: maybeFilters.deviation === "max2" ? "max2" : "all"
   };
 }
 
