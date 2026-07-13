@@ -39,7 +39,7 @@ export function FuelFilterDock({ fuel, fuels, filters, filtersOpen, mode, distan
       <div className="fuel-dock__row" aria-label="Интересующее топливо">
         {fuels.map((item) => {
           const label = item === "all" ? "Все" : item === "ДТ" ? item : `АИ-${item}`;
-          return <button key={item} type="button" aria-pressed={fuel === item} title={item === "all" ? "Не учитывать марку топлива" : `${label}: учитывать при поиске и оценке АЗС`} className="fuel-pill" onClick={() => onFuelChange(item)}>{label}</button>;
+          return <button key={item} type="button" aria-pressed={fuel === item} title={item === "all" ? "Показать все марки топлива" : `${label}: показать подтверждённые и ещё не уточнённые АЗС`} className="fuel-pill" onClick={() => onFuelChange(item)}>{label}</button>;
         })}
       </div>
       <div className="fuel-dock__tools">
