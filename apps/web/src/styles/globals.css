@@ -67,13 +67,15 @@ body {
   to { transform: scale(1); }
 }
 
-.ymaps-2-1-79-map { filter: saturate(.8) contrast(1.05) brightness(.82); }
-[class*="placemark-overlay"] { animation: marker-pulse 2.4s ease-in-out infinite; }
+.ymaps-2-1-79-map { filter: saturate(.82) contrast(1.04) brightness(.84); }
 
-@keyframes marker-pulse {
-  0%, 100% { filter: drop-shadow(0 0 0 rgba(0, 230, 118, 0)); }
-  50% { filter: drop-shadow(0 0 8px rgba(0, 230, 118, .75)); }
+.station-sheet {
+  height: min(50dvh, 470px);
+  transition: height 220ms ease-out;
 }
+
+.station-sheet[data-snap="collapsed"] { height: calc(112px + env(safe-area-inset-bottom)); }
+.station-sheet[data-snap="expanded"] { height: min(90dvh, calc(100dvh - env(safe-area-inset-top) - 76px)); }
 
 body::before {
   position: fixed;
@@ -87,6 +89,20 @@ body::before {
 
 @media (max-width: 640px) {
   body { padding-bottom: env(safe-area-inset-bottom); }
+}
+
+@media (min-width: 768px) {
+  .station-sheet[data-snap="collapsed"] { height: 112px; }
+  .station-sheet[data-snap="expanded"] { height: calc(100dvh - 116px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    scroll-behavior: auto !important;
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+  }
 }
 
 button,

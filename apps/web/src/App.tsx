@@ -1,7 +1,7 @@
 import { buildNavigatorAdvice, hasRequestedFuel } from "@ai-shturman/shared";
-import { useEffect, useMemo, useRef, useState, type Dispatch, type FormEvent, type SetStateAction } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type FormEvent, type SetStateAction } from "react";
 import { FiltersPanel } from "./components/FiltersPanel";
-import { CarShell, DrivePanel, MapContainer, NavigationCard } from "./components/CarShell";
+import { CarShell, DrivePanel, MapContainer, NavigationCard, RouteCompactBar } from "./components/CarShell";
 import { NavigatorAdviceCard } from "./components/NavigatorAdviceCard";
 import { RouteForm } from "./components/RouteForm";
 import { formatDuration, RouteSummary } from "./components/RouteSummary";
@@ -92,6 +92,8 @@ export function App() {
   const [manualLon, setManualLon] = useState("");
   const [manualError, setManualError] = useState<string | null>(null);
   const [isAdviceVisible, setIsAdviceVisible] = useState(false);
+  const [isRouteEditorOpen, setIsRouteEditorOpen] = useState(true);
+  const [selectedStation, setSelectedStation] = useState<FuelStation | null>(null);
   const routeBuildPromiseRef = useRef<Promise<RoutePoints> | null>(null);
 
   const geolocation = useGeolocation();
@@ -197,6 +199,7 @@ export function App() {
       setRoutePoints({ from: response.from, to: response.to });
       setRouteWarning(response.warning ?? null);
       setIsAdviceVisible(true);
+      setIsRouteEditorOpen(false);
     } catch (requestError) {
       if (shouldOfferApproximateFallback(requestError)) {
         setRouteFallbackHint("Реальный маршрут недоступен. Можно использовать приблизительный режим.");
@@ -333,6 +336,8 @@ export function App() {
     setRouteFallbackHint(null);
     setIsAdviceVisible(false);
     setError(null);
+    setSelectedStation(null);
+    setIsRouteEditorOpen(true);
   }
 
   function handleFromChange(value: RouteLocation) {
@@ -356,10 +361,33 @@ export function App() {
     }
   }
 
-  function handleMapStationClick(station: FuelStation) {
+  const handleMapStationClick = useCallback((station: FuelStation) => {
+    setSelectedStation(station);
     window.dispatchEvent(new Event("ai-shturman:open-station"));
     window.history.replaceState(null, "", `#station-${station.id}`);
     window.setTimeout(() => document.getElementById(`station-${station.id}`)?.scrollIntoView({ behavior: "smooth", block: "start" }), 220);
+  }, []);
+
+  const handleAdviceStationSelect = useCallback((stationId: string) => {
+    const station = filteredStations.find((item) => item.id === stationId);
+    if (station) handleMapStationClick(station);
+  }, [filteredStations, handleMapStationClick]);
+
+  function handleCancelRoute() {
+    setData(null);
+    setRoutePoints(null);
+    setRouteWarning(null);
+    setRouteFallbackHint(null);
+    setSelectedStation(null);
+    setIsAdviceVisible(false);
+    setIsRouteEditorOpen(true);
+  }
+
+  function handleSwapRoute() {
+    setFromPoint(toPoint);
+    setToPoint(fromPoint);
+    resetRouteIfNeeded();
+    setIsRouteEditorOpen(true);
   }
 
   return (
@@ -367,8 +395,10 @@ export function App() {
       online={isOnline}
       gpsReady={Boolean(geolocation.location)}
       accuracy={geolocation.location?.accuracy}
+      routeActive={Boolean(routeData?.route)}
       drivePanel={<DrivePanel route={routeData} next={filteredStations[0]} />}
-      map={<MapContainer from={routePoints?.from} to={routePoints?.to} location={!isRouteMode ? selectedLocation?.coords : null} route={routeData?.route?.geometry} stations={filteredStations} zoom={mapZoom} onZoomChange={setMapZoom} onStationClick={handleMapStationClick} />}
+      routePanel={routeData?.route && !isRouteEditorOpen ? <RouteCompactBar from={routeData.from.name} to={routeData.to.name} distanceKm={routeData.route.distanceKm} duration={formatDuration(routeData.route.durationMin)} onEdit={() => setIsRouteEditorOpen(true)} onSwap={handleSwapRoute} onCancel={handleCancelRoute} /> : null}
+      map={<MapContainer from={routePoints?.from} to={routePoints?.to} location={!isRouteMode ? selectedLocation?.coords : null} route={routeData?.route?.geometry} stations={filteredStations} zoom={mapZoom} recommendedStationId={navigatorAdvice?.stationId ?? null} selectedStation={selectedStation} onZoomChange={setMapZoom} onStationClick={handleMapStationClick} />}
     >
       <main className="car-panel mx-auto grid max-w-3xl gap-3">
         {!isOnline ? <Notice tone="danger" text="Нет интернета. Данные можно обновить после восстановления связи." /> : null}
@@ -377,16 +407,16 @@ export function App() {
 
         {isRouteMode && !routePoints && !loadingPhase && !error ? <NavigationCard state="empty" /> : null}
 
-        <RouteForm
+        {!routeData?.route || isRouteEditorOpen ? <RouteForm
           from={fromPoint}
           to={toPoint}
           isRouteMode={isRouteMode}
           isBuildingRoute={isBuildingRoute}
           onFromChange={handleFromChange}
           onToChange={handleToChange}
-          onSwap={() => { setFromPoint(toPoint); setToPoint(fromPoint); resetRouteIfNeeded(); }}
+          onSwap={handleSwapRoute}
           onBuildRoute={handleBuildRoute}
-        />
+        /> : null}
 
         {routeData?.mode === "route_real" && routeData.route ? <RouteSummary route={routeData} stationCount={filteredStations.length} /> : null}
 
@@ -522,7 +552,7 @@ export function App() {
           </button>
         ) : null}
 
-        {navigatorAdvice && isAdviceVisible ? <NavigatorAdviceCard advice={navigatorAdvice} /> : null}
+        {navigatorAdvice && isAdviceVisible ? <NavigatorAdviceCard advice={navigatorAdvice} onSelect={handleAdviceStationSelect} /> : null}
 
         {data && data.stations.length === 0 && !isLoading ? <EmptyState /> : null}
         {data && data.stations.length > 0 && filteredStations.length === 0 && !isLoading ? <FilterEmptyState /> : null}

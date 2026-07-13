@@ -1,4 +1,3 @@
-import { motion } from "framer-motion";
 import {
   AlertTriangle,
   BadgeCheck,
@@ -12,7 +11,7 @@ import {
   Navigation,
   Users
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { memo, useCallback, useMemo, useState } from "react";
 import { fetchStationDetails } from "../services/fuelApi";
 import type { FuelStation, StationDetails } from "../types/fuel";
 import { buildTwoGisUrl, buildYandexMapsUrl } from "../utils/maps";
@@ -23,7 +22,7 @@ interface Props {
   recommended?: boolean;
 }
 
-export function FuelStationCard({ station, index = 0, recommended = false }: Props) {
+export const FuelStationCard = memo(function FuelStationCard({ station, recommended = false }: Props) {
   const [expanded, setExpanded] = useState(false);
   const [details, setDetails] = useState<StationDetails | null>(null);
   const [detailsError, setDetailsError] = useState<string | null>(null);
@@ -43,10 +42,6 @@ export function FuelStationCard({ station, index = 0, recommended = false }: Pro
       setLoading(false);
     }
   }, [details, loading, station.id]);
-
-  useEffect(() => {
-    if (recommended) void loadDetails();
-  }, [loadDetails, recommended]);
 
   const fuels = useMemo(() => collectFuels(station, details), [station, details]);
   const status = details?.status ?? station.status;
@@ -73,12 +68,9 @@ export function FuelStationCard({ station, index = 0, recommended = false }: Pro
   }
 
   return (
-    <motion.article
+    <article
       id={`station-${station.id}`}
       className="group scroll-mt-40 overflow-hidden rounded-[26px] border border-white/[.10] bg-[#0b1017] text-white shadow-[0_24px_60px_rgba(0,0,0,.28)]"
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: Math.min(index, 8) * 0.04 }}
     >
       <div className="relative overflow-hidden p-4">
         <div className="pointer-events-none absolute -right-16 -top-16 h-44 w-44 rounded-full bg-emerald-400/[.10] blur-3xl" />
@@ -173,9 +165,9 @@ export function FuelStationCard({ station, index = 0, recommended = false }: Pro
           {loading ? <DetailsSkeleton /> : details ? <StationDetailsPanel details={details} onReport={report} /> : detailsError ? <button type="button" onClick={() => void loadDetails()} className="w-full rounded-2xl border border-red-400/20 bg-red-400/10 p-3 text-sm font-bold text-red-200">{detailsError} Нажмите, чтобы повторить</button> : null}
         </div>
       ) : null}
-    </motion.article>
+    </article>
   );
-}
+});
 
 function StationDetailsPanel({ details, onReport }: { details: StationDetails; onReport: (kind: "fuel" | "queue") => void }) {
   return (
