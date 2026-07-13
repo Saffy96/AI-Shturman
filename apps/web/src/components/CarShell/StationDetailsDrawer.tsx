@@ -1,4 +1,4 @@
-import { X } from "lucide-react";
+import { Maximize2, Minimize2, X } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import type { FuelStation } from "../../types/fuel";
 
@@ -31,7 +31,7 @@ export function StationDetailsDrawer({ station, children, onClose }: Props) {
           <div className="station-drawer__title">{station.brand || station.name || "АЗС"}</div>
         </div>
         <div className="station-drawer__sheet-actions">
-          <button type="button" onClick={() => setSheetState(sheetState === "expanded" ? "half" : "expanded")} className="drawer-icon-button mobile-only" aria-label="Изменить высоту панели">↕</button>
+          <button type="button" onClick={() => setSheetState(sheetState === "expanded" ? "half" : "expanded")} className="drawer-icon-button mobile-only" aria-label={sheetState === "expanded" ? "Уменьшить панель" : "Развернуть панель"}>{sheetState === "expanded" ? <Minimize2 size={19} /> : <Maximize2 size={19} />}</button>
           <button type="button" onClick={onClose} className="drawer-icon-button" aria-label="Закрыть детали АЗС"><X size={19} /></button>
         </div>
       </header>

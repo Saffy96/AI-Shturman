@@ -10,6 +10,8 @@ import type {
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:4000";
 const REQUEST_TIMEOUT_MS = 12_000;
+const stationDetailsCache = new Map<string, StationDetailsResponse>();
+const stationDetailsRequests = new Map<string, Promise<StationDetailsResponse>>();
 
 export type FuelApiErrorKind =
   | "backend-unavailable"
@@ -70,9 +72,23 @@ export async function searchGeo(query: string): Promise<GeoSearchResponse> {
 }
 
 export async function fetchStationDetails(osmId: string, forceRefresh = false): Promise<StationDetailsResponse> {
+  if (!forceRefresh) {
+    const cached = stationDetailsCache.get(osmId);
+    if (cached) return cached;
+    const pending = stationDetailsRequests.get(osmId);
+    if (pending) return pending;
+  }
+
   const url = new URL(`/api/fuel/stations/${encodeURIComponent(osmId)}/details`, API_BASE_URL);
   if (forceRefresh) url.searchParams.set("refresh", "1");
-  return requestJson<StationDetailsResponse>(url);
+  const request = requestJson<StationDetailsResponse>(url)
+    .then((response) => {
+      stationDetailsCache.set(osmId, response);
+      return response;
+    })
+    .finally(() => stationDetailsRequests.delete(osmId));
+  stationDetailsRequests.set(osmId, request);
+  return request;
 }
 
 export async function reverseGeo(lat: number, lon: number): Promise<GeoSearchResult> {

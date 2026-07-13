@@ -4,13 +4,12 @@ import { Header } from "./Header";
 interface CarShellProps {
   map: ReactNode;
   routePanel?: ReactNode;
-  advicePanel?: ReactNode;
   editorPanel?: ReactNode;
   filterDock?: ReactNode;
   mapControls?: ReactNode;
   stationPanel?: ReactNode;
   noticePanel?: ReactNode;
-  children?: ReactNode;
+  onOpenSettings: () => void;
   online: boolean;
   gpsReady: boolean;
   accuracy?: number;
@@ -20,13 +19,12 @@ interface CarShellProps {
 export function CarShell({
   map,
   routePanel,
-  advicePanel,
   editorPanel,
   filterDock,
   mapControls,
   stationPanel,
   noticePanel,
-  children,
+  onOpenSettings,
   online,
   gpsReady,
   accuracy,
@@ -35,16 +33,14 @@ export function CarShell({
   return (
     <div className="app-shell">
       <div className="map-layer">{map}</div>
-      <Header online={online} gpsReady={gpsReady} accuracy={accuracy} routeActive={routeActive} />
+      <Header online={online} gpsReady={gpsReady} accuracy={accuracy} routeActive={routeActive} onOpenSettings={onOpenSettings} />
 
       {routePanel ? <div className="route-summary-overlay">{routePanel}</div> : null}
-      {advicePanel ? <aside className="smart-advice-overlay">{advicePanel}</aside> : null}
       {editorPanel ? <aside className="route-editor-overlay">{editorPanel}</aside> : null}
       {noticePanel ? <div className="notice-overlay">{noticePanel}</div> : null}
       {mapControls ? <div className="map-control-overlay">{mapControls}</div> : null}
       {filterDock ? <div className="fuel-filter-overlay">{filterDock}</div> : null}
       {stationPanel}
-      {children}
     </div>
   );
 }

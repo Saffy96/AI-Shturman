@@ -93,7 +93,7 @@ function mapGeolocationError(error: GeolocationPositionError): GeolocationReques
   }
 
   if (error.code === error.TIMEOUT) {
-    return new GeolocationRequestError("Не удалось определить местоположение за 30 секунд.", "timeout");
+    return new GeolocationRequestError("Не удалось определить местоположение за 10 секунд.", "timeout");
   }
 
   return new GeolocationRequestError(error.message || "Не удалось получить геопозицию.", "unavailable");

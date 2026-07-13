@@ -36,11 +36,6 @@ export interface StationFilters {
   deviation: "all" | "max2";
 }
 
-export interface FilteredSummary {
-  total: number;
-  shown: number;
-}
-
 export interface NearbyFuelResponse {
   ok: true;
   source: "gdebenz";

@@ -12,15 +12,15 @@ interface Props {
   route?: Coordinates[];
   stations: FuelStation[];
   zoom: number;
-  recommendedStationId?: string | null;
   selectedStation?: FuelStation | null;
+  stationFocusVersion?: number;
   onZoomChange: (zoom: number) => void;
   onStationClick?: (station: FuelStation) => void;
 }
 
 const defaultCenter = [55.796127, 49.106414] as [number, number];
 
-export function Map({ from, to, location, route = [], stations, zoom, recommendedStationId, selectedStation, onZoomChange, onStationClick }: Props) {
+export function Map({ from, to, location, route = [], stations, zoom, selectedStation, stationFocusVersion = 0, onZoomChange, onStationClick }: Props) {
   const mapRef = useRef<any>(null);
   const programmaticMoveRef = useRef(false);
   const interactionTimerRef = useRef<number | null>(null);
@@ -88,14 +88,8 @@ export function Map({ from, to, location, route = [], stations, zoom, recommende
   }, [interactionMode, location, mapReady, showLocation]);
 
   useEffect(() => {
-    const focusStation = (event: Event) => {
-      const detail = (event as CustomEvent<Coordinates>).detail;
-      if (!mapRef.current || !detail || !Number.isFinite(detail.lat) || !Number.isFinite(detail.lon)) return;
-      runProgrammaticMove(() => mapRef.current.setCenter([detail.lat, detail.lon], Math.max(currentZoom, 15), { duration: 240 }));
-    };
-    window.addEventListener("ai-shturman:focus-station", focusStation);
-    return () => window.removeEventListener("ai-shturman:focus-station", focusStation);
-  }, [currentZoom, runProgrammaticMove]);
+    if (stationFocusVersion > 0) showSelected();
+  }, [mapReady, showSelected, stationFocusVersion]);
 
   useEffect(() => () => {
     if (interactionTimerRef.current != null) window.clearTimeout(interactionTimerRef.current);
@@ -114,9 +108,8 @@ export function Map({ from, to, location, route = [], stations, zoom, recommende
 
   const markers = useMemo(() => stations.map((station) => {
     const selected = selectedStation?.id === station.id;
-    const recommended = recommendedStationId === station.id;
-    return <StationMarker key={station.id} station={station} selected={selected} recommended={recommended} compact={currentZoom < 11} onClick={onStationClick} />;
-  }), [currentZoom, onStationClick, recommendedStationId, selectedStation?.id, stations]);
+    return <StationMarker key={station.id} station={station} selected={selected} compact={currentZoom < 11} onClick={onStationClick} />;
+  }), [currentZoom, onStationClick, selectedStation?.id, stations]);
 
   return <section className="relative h-full w-full overflow-hidden bg-[#05070b]" aria-label="Карта АЗС">
     <YMaps query={{ apikey: import.meta.env.VITE_YANDEX_MAPS_API_KEY ?? "", lang: "ru_RU", load: "package.full" }}>
@@ -148,13 +141,13 @@ export function Map({ from, to, location, route = [], stations, zoom, recommende
   </section>;
 }
 
-const StationMarker = memo(function StationMarker({ station, selected, recommended, compact, onClick }: { station: FuelStation; selected: boolean; recommended: boolean; compact: boolean; onClick?: (station: FuelStation) => void }) {
-  const visual = stationVisual(station, recommended);
+const StationMarker = memo(function StationMarker({ station, selected, compact, onClick }: { station: FuelStation; selected: boolean; compact: boolean; onClick?: (station: FuelStation) => void }) {
+  const visual = stationVisual(station);
   const handleClick = useCallback(() => onClick?.(station), [onClick, station]);
   return <Placemark
     geometry={[station.lat, station.lon]}
     properties={{ iconContent: compact ? visual.compactSymbol : visual.symbol, hintContent: `${station.brand || station.name || "АЗС"} · ${visual.label}` }}
-    options={{ preset: selected || recommended ? "islands#circleStretchyIcon" : "islands#circleIcon", iconColor: visual.color, zIndex: selected ? 1200 : recommended ? 1100 : visual.zIndex }}
+    options={{ preset: selected ? "islands#circleStretchyIcon" : "islands#circleIcon", iconColor: visual.color, zIndex: selected ? 1200 : visual.zIndex }}
     modules={["geoObject.addon.hint"]}
     onClick={handleClick}
   />;
@@ -169,8 +162,7 @@ function boundsFor(points: Coordinates[]): [[number, number], [number, number]] 
   return points.reduce<[[number, number], [number, number]]>((bounds, point) => [[Math.min(bounds[0][0], point.lat), Math.min(bounds[0][1], point.lon)], [Math.max(bounds[1][0], point.lat), Math.max(bounds[1][1], point.lon)]], [[points[0].lat, points[0].lon], [points[0].lat, points[0].lon]]);
 }
 
-function stationVisual(station: FuelStation, recommended: boolean) {
-  if (recommended) return { color: "#06b6d4", symbol: "★", compactSymbol: "★", label: "рекомендуемая", zIndex: 1000 };
+function stationVisual(station: FuelStation) {
   if (station.status === "no") return { color: "#ef4444", symbol: "×", compactSymbol: "×", label: "топлива нет", zIndex: 600 };
   if (station.status === "low") return { color: "#f97316", symbol: "!", compactSymbol: "!", label: "топливо заканчивается", zIndex: 700 };
   if (station.hasQueue || station.status === "queue") return { color: "#eab308", symbol: "≋", compactSymbol: "•", label: "есть очередь", zIndex: 800 };

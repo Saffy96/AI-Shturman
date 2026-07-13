@@ -1,6 +1,5 @@
 import {
   AlertTriangle,
-  BadgeCheck,
   CheckCircle,
   ChevronDown,
   Clock,
@@ -20,14 +19,11 @@ import { buildTwoGisUrl, buildYandexMapsUrl } from "../utils/maps";
 
 interface Props {
   station: FuelStation;
-  index?: number;
-  recommended?: boolean;
   selected?: boolean;
-  selectionVersion?: number;
   onShowOnMap?: (station: FuelStation) => void;
 }
 
-export const FuelStationCard = memo(function FuelStationCard({ station, recommended = false, selected = false, selectionVersion = 0, onShowOnMap }: Props) {
+export const FuelStationCard = memo(function FuelStationCard({ station, selected = false, onShowOnMap }: Props) {
   const [expanded, setExpanded] = useState(false);
   const [details, setDetails] = useState<StationDetails | null>(null);
   const [detailsError, setDetailsError] = useState<string | null>(null);
@@ -52,8 +48,7 @@ export const FuelStationCard = memo(function FuelStationCard({ station, recommen
     if (!selected) return;
     setExpanded(true);
     void loadDetails();
-    // selectionVersion intentionally reopens the same station after another map click.
-  }, [selected, selectionVersion]);
+  }, [selected]);
 
   const fuels = useMemo(() => collectFuels(station, details), [station, details]);
   const status = details?.status ?? station.status;
@@ -73,9 +68,14 @@ export const FuelStationCard = memo(function FuelStationCard({ station, recommen
 
   function report(kind: "fuel" | "queue") {
     const key = "ai-shturman:stationReports";
-    const history = JSON.parse(window.localStorage.getItem(key) || "[]") as unknown[];
+    let history: unknown[] = [];
+    try {
+      const stored = JSON.parse(window.localStorage.getItem(key) || "[]") as unknown;
+      if (Array.isArray(stored)) history = stored;
+    } catch { /* Ignore corrupted local reports and start a fresh history. */ }
     history.unshift({ stationId: station.id, station: title, kind, createdAt: new Date().toISOString() });
-    window.localStorage.setItem(key, JSON.stringify(history.slice(0, 100)));
+    try { window.localStorage.setItem(key, JSON.stringify(history.slice(0, 100))); }
+    catch { /* Reporting remains non-blocking when storage is unavailable. */ }
     window.dispatchEvent(new Event("ai-shturman:reports-updated"));
   }
 
@@ -86,12 +86,6 @@ export const FuelStationCard = memo(function FuelStationCard({ station, recommen
     >
       <div className="relative overflow-hidden p-4">
         <div className="pointer-events-none absolute -right-16 -top-16 h-44 w-44 rounded-full bg-emerald-400/[.10] blur-3xl" />
-
-        {recommended ? (
-          <div className="mb-3 inline-flex items-center gap-1.5 rounded-full bg-emerald-400 px-2.5 py-1 text-[10px] font-black uppercase tracking-[.14em] text-emerald-950">
-            <BadgeCheck size={13} /> Лучший вариант
-          </div>
-        ) : null}
 
         <header className="relative flex items-start gap-3">
           <div className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-emerald-300 to-emerald-600 text-emerald-950 shadow-[0_10px_30px_rgba(16,185,129,.25)]">
@@ -154,11 +148,6 @@ export const FuelStationCard = memo(function FuelStationCard({ station, recommen
           <QuickMetric icon={<Clock size={13} />} label="Обновлено" value={relativeTime(updatedAt)} />
           <QuickMetric icon={<CheckCircle size={13} />} label="Уверенность" value={confidence == null ? "—" : `${Math.round(confidence)}%`} />
           <QuickMetric icon={<Navigation size={13} />} label="Отклонение" value={formatDeviation(station.distanceFromRouteKm)} />
-        </div>
-
-        <div className="relative mt-3 rounded-2xl border border-emerald-400/[.12] bg-emerald-400/[.07] p-3">
-          <div className="text-sm font-black text-emerald-100">{station.recommendation}</div>
-          <div className="mt-1 text-[10px] font-semibold leading-relaxed text-slate-400">Актуальность рассчитана по свежести и подтверждениям водителей.</div>
         </div>
 
         <div className="relative mt-3 grid grid-cols-[1fr_1fr_auto] gap-2">
@@ -301,7 +290,7 @@ function formatPrice(value: number): string { return value.toLocaleString("ru-RU
 function formatLimit(details: StationDetails): string { return details.limit.liters == null ? "размер не указан" : `${details.limit.liters.toLocaleString("ru-RU")} л`; }
 function formatDistance(value: number): string { return value < 10 ? value.toFixed(1) : String(Math.round(value)); }
 function formatDeviation(value?: number | null): string { if (value == null) return "—"; return value < 1 ? `${Math.round(value * 1000)} м` : `${value.toFixed(1)} км`; }
-function relativeTime(value: string | null): string { if (!value) return "нет данных"; const minutes = Math.max(0, Math.round((Date.now() - new Date(value).getTime()) / 60_000)); return minutes < 60 ? `${minutes} мин назад` : minutes < 1_440 ? `${Math.round(minutes / 60)} ч назад` : `${Math.round(minutes / 1_440)} дн назад`; }
+function relativeTime(value: string | null): string { if (!value) return "нет данных"; const timestamp = new Date(value).getTime(); if (!Number.isFinite(timestamp)) return "время неизвестно"; const minutes = Math.max(0, Math.round((Date.now() - timestamp) / 60_000)); return minutes < 60 ? `${minutes} мин назад` : minutes < 1_440 ? `${Math.round(minutes / 60)} ч назад` : `${Math.round(minutes / 1_440)} дн назад`; }
 function formatDate(value: string | null): string { return value ? new Date(value).toLocaleString("ru-RU", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : "время неизвестно"; }
 type Activity = StationDetails["activities"][number];
 interface ActivityGroup { key: string; title: string; items: Activity[]; }
