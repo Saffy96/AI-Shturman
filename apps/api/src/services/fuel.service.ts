@@ -83,6 +83,10 @@ const stationAddressCache = new TtlCache<string>(7 * 24 * 60 * 60 * 1000);
 const MAX_ROUTE_CHUNKS = 20;
 const MAX_GDEBENZ_ROUTE_REQUESTS = 24;
 const MAX_CHUNK_SPLIT_DEPTH = 2;
+// Gdebenz serves a 30-minute public cache when fp is omitted. Its own web app
+// always sends a fingerprint; this stable read-only fingerprint selects the
+// fresh response while our short local cache still protects the upstream.
+const GDEBENZ_DETAILS_FINGERPRINT = "ai-shturman-readonly";
 
 interface RequestBudget { remaining: number; }
 
@@ -131,7 +135,7 @@ async function getCachedStationDetails(osmId: number | string, forceRefresh: boo
   if (forceRefresh) detailsCache.delete(key);
   const cached = detailsCache.get(key);
   if (cached) return cached;
-  const value = await getStationDetails(osmId, undefined, gdebenzOptions());
+  const value = await getStationDetails(osmId, GDEBENZ_DETAILS_FINGERPRINT, gdebenzOptions());
   detailsCache.set(key, value);
   return value;
 }
@@ -141,7 +145,7 @@ async function getCachedStationRecent(osmId: number | string, forceRefresh: bool
   if (forceRefresh) recentCache.delete(key);
   const cached = recentCache.get(key);
   if (cached) return cached;
-  const value = await getStationRecent(osmId, 30, undefined, gdebenzOptions());
+  const value = await getStationRecent(osmId, 30, GDEBENZ_DETAILS_FINGERPRINT, gdebenzOptions());
   recentCache.set(key, value);
   return value;
 }

@@ -11,7 +11,7 @@ export const env = {
   openRouteServiceApiKey: process.env.OPENROUTESERVICE_API_KEY ?? "",
   openRouteServiceTimeoutMs: getNumberEnv("OPENROUTESERVICE_TIMEOUT_MS", 12_000),
   cacheTtlMs: getNumberEnv("CACHE_TTL_MS", 60_000),
-  nodeEnv: process.env.NODE_ENV ?? "development"
+  nodeEnv: process.env.NODE_ENV ?? (process.env.npm_lifecycle_event === "dev" ? "development" : "production")
 };
 
 function getNumberEnv(name: string, fallback: number): number {

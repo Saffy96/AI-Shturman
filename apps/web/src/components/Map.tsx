@@ -46,7 +46,7 @@ export function Map({ from, to, location, route = [], stations, zoom, recommende
   const showRoute = useCallback(() => {
     if (!mapRef.current || !routeBounds) return;
     const compact = window.matchMedia("(max-width: 767px)").matches;
-    const zoomMargin = compact ? [132, 24, 158, 24] : [112, 430, 140, 56];
+    const zoomMargin = compact ? [132, 24, 158, 24] : selectedStation ? [112, 470, 140, 56] : [112, 72, 140, 56];
     const isCityRoute = Math.abs(routeBounds[1][0] - routeBounds[0][0]) < 1 && Math.abs(routeBounds[1][1] - routeBounds[0][1]) < 1.5;
     runProgrammaticMove(() => {
       const result = mapRef.current.setBounds(routeBounds, { checkZoomRange: true, zoomMargin, duration: 250 });
@@ -56,7 +56,7 @@ export function Map({ from, to, location, route = [], stations, zoom, recommende
         });
       }
     });
-  }, [routeBounds, runProgrammaticMove]);
+  }, [routeBounds, runProgrammaticMove, selectedStation]);
 
   const showLocation = useCallback(() => {
     if (!mapRef.current || !location) return;

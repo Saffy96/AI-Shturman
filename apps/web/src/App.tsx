@@ -1,7 +1,8 @@
 import { buildNavigatorAdvice, hasRequestedFuel } from "@ai-shturman/shared";
 import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type FormEvent, type SetStateAction } from "react";
 import { FiltersPanel } from "./components/FiltersPanel";
-import { CarShell, DrivePanel, MapContainer, NavigationCard, RouteCompactBar } from "./components/CarShell";
+import { CarShell, FuelFilterDock, MapContainer, NavigationCard, RouteCompactBar, StationDetailsDrawer } from "./components/CarShell";
+import { FuelStationCard } from "./components/FuelStationCard";
 import { NavigatorAdviceCard } from "./components/NavigatorAdviceCard";
 import { RouteForm } from "./components/RouteForm";
 import { formatDuration, RouteSummary } from "./components/RouteSummary";
@@ -100,11 +101,18 @@ export function App() {
   const [stationSelectionVersion, setStationSelectionVersion] = useState(0);
   const routeBuildPromiseRef = useRef<Promise<RoutePoints> | null>(null);
 
+  useEffect(() => {
+    const openEditor = () => setIsRouteEditorOpen(true);
+    window.addEventListener("ai-shturman:edit-search", openEditor);
+    return () => window.removeEventListener("ai-shturman:edit-search", openEditor);
+  }, []);
+
   const geolocation = useGeolocation();
   const isOnline = useNetworkStatus();
   const isRouteMode = selectedMode === "route";
   const canBuildRoute = Boolean(fromPoint && toPoint);
   const canRequestStations = isRouteMode ? Boolean(routePoints) : Boolean(selectedLocation);
+  const legacyUiEnabled: boolean = false;
   const allResponseStations = data?.stations ?? [];
   const allStations = useMemo(
     () => routeDataForFiltering(data)
@@ -285,6 +293,7 @@ export function App() {
       }
 
       setIsAdviceVisible(true);
+      setIsRouteEditorOpen(false);
     } catch (requestError) {
       if (isRouteMode && requestMode === "real" && shouldOfferApproximateFallback(requestError)) {
         setRouteFallbackHint("Если сервис реального маршрута недоступен, можно продолжить в приблизительном режиме по corridor bbox.");
@@ -378,6 +387,7 @@ export function App() {
     if (station) {
       setSelectedStation(station);
       setStationSelectionVersion((value) => value + 1);
+      window.dispatchEvent(new Event("ai-shturman:open-station"));
       window.dispatchEvent(new CustomEvent("ai-shturman:focus-station", { detail: { lat: station.lat, lon: station.lon } }));
     }
   }, [filteredStations]);
@@ -411,11 +421,39 @@ export function App() {
       gpsReady={Boolean(geolocation.location)}
       accuracy={geolocation.location?.accuracy}
       routeActive={Boolean(routeData?.route)}
-      drivePanel={<DrivePanel route={routeData} next={filteredStations[0]} />}
+      editorPanel={isRouteEditorOpen ? (
+        <div className="editor-card glass-panel">
+          <div className="editor-card__heading">
+            <div><span>Планирование</span><h2>{isRouteMode ? "Маршрут" : "Поиск рядом"}</h2></div>
+            {data ? <button type="button" onClick={() => setIsRouteEditorOpen(false)} aria-label="Закрыть редактор">×</button> : null}
+          </div>
+          <ModeSwitch selectedMode={selectedMode} onChange={handleModeChange} />
+          {isRouteMode ? (
+            <RouteForm from={fromPoint} to={toPoint} isRouteMode={isRouteMode} isBuildingRoute={isBuildingRoute} onFromChange={handleFromChange} onToChange={handleToChange} onSwap={handleSwapRoute} onBuildRoute={handleBuildRoute} />
+          ) : (
+            <div className="nearby-editor">
+              <div className="location-readout"><span>Текущая точка</span><strong>{locationLabel}</strong><small>{sourceLabel}</small></div>
+              <div className="nearby-editor__actions">
+                <button type="button" onClick={handleLocationRequest} disabled={geolocation.isLocating || isLoading}>{geolocation.isLocating ? "Определяем…" : "Моё местоположение"}</button>
+                <button type="button" onClick={() => setIsNearbyMapPickerOpen(true)}>Выбрать на карте</button>
+                <button type="button" onClick={handleUseKazan}>Казань</button>
+              </div>
+            </div>
+          )}
+          {error ? <Notice tone="danger" text={error} /> : null}
+          {routeFallbackHint && isRouteMode ? <RouteFallbackCard text={routeFallbackHint} isLoading={isLoading} onUseApproximateRoute={handleUseApproximateRoute} /> : null}
+          {loadingPhase ? <NavigationCard state="loading" /> : null}
+        </div>
+      ) : null}
+      advicePanel={navigatorAdvice && isAdviceVisible && !isRouteEditorOpen ? <NavigatorAdviceCard advice={navigatorAdvice} onSelect={handleAdviceStationSelect} /> : null}
+      noticePanel={!isOnline ? <Notice tone="danger" text="Нет подключения. Показаны сохранённые данные." /> : data && data.stations.length === 0 ? <Notice tone="neutral" text="По выбранным условиям АЗС не найдены." /> : data && data.stations.length > 0 && filteredStations.length === 0 ? <Notice tone="neutral" text="Ослабьте фильтры — подходящих АЗС сейчас нет." /> : routeWarning && isRouteMode && !isRouteEditorOpen ? <Notice tone="neutral" text={routeWarning} /> : null}
+      mapControls={!isRouteEditorOpen ? <button type="button" className="floating-edit-button" onClick={() => setIsRouteEditorOpen(true)}>Изменить поиск</button> : null}
+      filterDock={<FuelFilterDock fuel={fuel} fuels={fuelOptions} filters={filters} mode={selectedMode} distanceKm={isRouteMode ? corridorKm : radiusKm} distanceOptions={isRouteMode ? corridorOptions : radiusOptions} resultCount={filteredStations.length} loading={isLoading} canSearch={canRequestStations} onFuelChange={setFuel} onFiltersChange={setFilters} onDistanceChange={(value) => isRouteMode ? setCorridorKm(value as (typeof corridorOptions)[number]) : setRadiusKm(value as (typeof radiusOptions)[number])} onSearch={handleCheckStations} onRefresh={handleRefresh} />}
+      stationPanel={<StationDetailsDrawer station={selectedStation} onClose={() => setSelectedStation(null)}>{selectedStation ? <FuelStationCard key={selectedStation.id} station={selectedStation} recommended={navigatorAdvice?.stationId === selectedStation.id} selected selectionVersion={stationSelectionVersion} onShowOnMap={handleShowStationOnMap} /> : null}</StationDetailsDrawer>}
       routePanel={routeData?.route && !isRouteEditorOpen ? <RouteCompactBar from={routeData.from.name} to={routeData.to.name} distanceKm={routeData.route.distanceKm} duration={formatDuration(routeData.route.durationMin)} onEdit={() => setIsRouteEditorOpen(true)} onSwap={handleSwapRoute} onCancel={handleCancelRoute} /> : null}
       map={<MapContainer from={routePoints?.from} to={routePoints?.to} location={!isRouteMode ? selectedLocation?.coords : null} route={routeData?.route?.geometry} stations={filteredStations} zoom={mapZoom} recommendedStationId={navigatorAdvice?.stationId ?? null} selectedStation={selectedStation} onZoomChange={setMapZoom} onStationClick={handleMapStationClick} />}
     >
-      <main className="car-panel mx-auto grid max-w-3xl gap-3">
+      {legacyUiEnabled ? <main className="legacy-state-host car-panel mx-auto grid max-w-3xl gap-3" aria-hidden="true">
         {!isOnline ? <Notice tone="danger" text="Нет интернета. Данные можно обновить после восстановления связи." /> : null}
 
         <ModeSwitch selectedMode={selectedMode} onChange={handleModeChange} />
@@ -582,7 +620,7 @@ export function App() {
         {data && data.stations.length > 0 && filteredStations.length === 0 && !isLoading ? <FilterEmptyState /> : null}
 
         {filteredStations.length > 0 ? <NextStations stations={filteredStations} recommendedStationId={navigatorAdvice?.stationId ?? null} selectedStationId={selectedStation?.id ?? null} selectionVersion={stationSelectionVersion} onShowOnMap={handleShowStationOnMap} /> : null}
-      </main>
+      </main> : null}
       {isNearbyMapPickerOpen ? <MapPicker initial={selectedLocation?.coords} onClose={() => setIsNearbyMapPickerOpen(false)} onSelect={(point) => { applyLocation({ lat: point.lat, lon: point.lon }, "map"); setIsNearbyMapPickerOpen(false); }} /> : null}
     </CarShell>
   );

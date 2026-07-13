@@ -30,7 +30,7 @@ test("HAR B: status queue normalizes 20–50 cars, 30 l limit and prices", async
   assert.equal(station.status, "queue");
   assert.deepEqual(station.queue, { present: true, vehicleRange: "20–50", confirmations: 7, estimatedMinutes: null });
   assert.deepEqual(station.limit, { active: true, liters: 30, confirmations: 5 });
-  assert.deepEqual(station.prices["95"], { price: 61.4, confirmations: 3, updatedAt: "2026-07-13T08:55:00Z" });
+  assert.deepEqual(station.prices["95"], { price: 61.4, confirmations: 3, updatedAt: "2026-07-13T08:55:00.000Z" });
   assert.equal(station.confidencePercent, 84);
 });
 
@@ -75,6 +75,7 @@ test("activity timestamps support ISO, Unix seconds and Unix milliseconds", () =
   assert.equal(parseActivityTimestamp(1_752_400_000), 1_752_400_000_000);
   assert.equal(parseActivityTimestamp(1_752_400_000_000), 1_752_400_000_000);
   assert.equal(parseActivityTimestamp({ publishedAt: "2026-07-13T09:00:00Z" }), Date.parse("2026-07-13T09:00:00Z"));
+  assert.equal(parseActivityTimestamp("2026-07-13 15:56:03"), Date.parse("2026-07-13T15:56:03Z"));
   assert.equal(parseActivityTimestamp("не дата"), null);
 });
 
@@ -98,6 +99,16 @@ test("activities are merged, deduplicated and sorted only after the merge", () =
     Date.parse("2026-07-12T23:59:00Z")
   ]);
   assert.equal(merged.find((item) => item.sourceId === "same").wasOnSite, true);
+  assert.deepEqual(merged.find((item) => item.sourceId === "same").fuelTypes, ["92"]);
+});
+
+test("queue car ranges do not create phantom fuel grades", () => {
+  const [activity] = normalizeStationActivities("42", [
+    { status: "low", detail: "92, 95 · Очередь 50–100 машин · Лимит 30 л", created_at: "2026-07-13T10:00:00Z" }
+  ], "recent");
+  assert.deepEqual(activity.fuelTypes, ["92", "95"]);
+  assert.equal(activity.limitLiters, 30);
+  assert.deepEqual(activity.queue, { label: "50–100 машин", minCars: 50, maxCars: 100 });
 });
 
 test("unknown activity types and invalid dates are preserved at the end", () => {

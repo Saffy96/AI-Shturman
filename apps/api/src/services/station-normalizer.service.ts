@@ -66,7 +66,7 @@ export function normalizeStationDetails(
     confirmations: toNumberOrNull(raw.confirmations),
     confirmationsFresh: toNumberOrNull(raw.confirmationsFresh),
     realCount: toNumberOrNull(raw.realCount),
-    updatedAt: stringValue(raw.updated),
+    updatedAt: normalizeSourceDate(raw.updated),
     seeded: raw.seeded === true,
     views: toNumberOrNull(raw.views),
     freshConflict: raw.freshConflict === true || isRecord(raw.freshConflict),
@@ -120,8 +120,10 @@ export function parseActivityTimestamp(raw: unknown): number | null {
   if (typeof raw !== "string" || !raw.trim()) return null;
   const value = raw.trim();
   if (/^\d+(?:\.\d+)?$/.test(value)) return parseActivityTimestamp(Number(value));
-  const apiLocalDate = value.match(/^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?)$/);
-  const timestamp = Date.parse(apiLocalDate ? `${apiLocalDate[1]}T${apiLocalDate[2]}+03:00` : value);
+  // Gdebenz emits UTC timestamps without an explicit zone. Its frontend also
+  // interprets these values as UTC before formatting them in the device zone.
+  const apiUtcDate = value.match(/^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?)$/);
+  const timestamp = Date.parse(apiUtcDate ? `${apiUtcDate[1]}T${apiUtcDate[2]}Z` : value);
   return Number.isFinite(timestamp) ? timestamp : null;
 }
 
@@ -190,7 +192,7 @@ function normalizeActivity(
   const createdAtMs = parseActivityTimestamp(raw) ?? Number.NaN;
   const createdAt = Number.isFinite(createdAtMs) ? new Date(createdAtMs).toISOString() : firstDateValue(raw) ?? "";
   const sourceId = firstString(raw.sourceId, raw.id, raw.comment_id, raw.commentId);
-  const fuelTypes = parseFuels(raw.fuelTypes ?? raw.fuels ?? raw.fuels_now, text);
+  const fuelTypes = parseActivityFuels(raw, text);
   const limitLiters = parseLimitLiters(raw.limitLiters ?? raw.limit_liters, text);
   const queue = parseActivityQueue(raw.queue, text);
   const type = normalizeActivityType(raw.type, raw.status, text, limitLiters);
@@ -238,6 +240,18 @@ function parseActivityQueue(rawQueue: unknown, text: string): StationActivity["q
   if (count) return { label: count[0].trim(), minCars: Number(count[1]), maxCars: Number(count[1]) };
   if (/очеред/i.test(text) || rawQueue === true || isRecord(rawQueue)) return { label: "Очередь" };
   return undefined;
+}
+
+function parseActivityFuels(raw: GdebenzRecentReportRaw, text: string): string[] {
+  const structured = raw.fuelTypes ?? raw.fuels ?? raw.fuels_now;
+  if (structured != null) return parseFuels(structured);
+  // Detail strings use `fuels · queue · limit`. Restricting fuel parsing to
+  // the first segment prevents "50–100 машин" from inventing АИ-100.
+  const firstSegment = text.split("·", 1)[0]?.trim() ?? "";
+  const withoutMetrics = firstSegment
+    .replace(/(?:≈|~)?\s*\d+\s*[–—-]\s*\d+\s*машин/gi, " ")
+    .replace(/лимит(?:ом|а)?\s*(?:до|:|—|-)?\s*\d+(?:[.,]\d+)?\s*л/gi, " ");
+  return parseFuels(undefined, withoutMetrics);
 }
 
 function parseLimitLiters(rawLimit: unknown, text: string): number | null {
@@ -313,8 +327,13 @@ function normalizeDetailsPrices(raw: GdebenzStationDetailsRaw["pricesNow"]): Rec
   return Object.fromEntries(Object.entries(raw).map(([fuel, price]) => [fuel, {
     price: toNumberOrNull(price.p),
     confirmations: toNumberOrNull(price.n),
-    updatedAt: stringValue(price.t)
+    updatedAt: normalizeSourceDate(price.t)
   }]));
+}
+
+function normalizeSourceDate(value: unknown): string | null {
+  const timestamp = parseActivityTimestamp(value);
+  return timestamp == null ? stringValue(value) : new Date(timestamp).toISOString();
 }
 
 export function mergeStationSources(groups: NormalizedFuelStation[][]): NormalizedFuelStation[] {
