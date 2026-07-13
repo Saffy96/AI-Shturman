@@ -75,7 +75,7 @@ export function normalizeStationDetails(
     },
     limit: {
       active: raw.limited === true,
-      liters: toNumberOrNull(limits?.lim),
+      liters: toNumberOrNull(limits?.lim) ?? findLimitLiters(raw.detail, recent),
       confirmations: toNumberOrNull(limits?.limCnt)
     },
     prices: normalizeDetailsPrices(raw.pricesNow),
@@ -92,6 +92,17 @@ export function normalizeStationDetails(
     })),
     sourceLabel: "Данные водителей"
   };
+}
+
+function findLimitLiters(detail: string | null | undefined, recent: GdebenzRecentReportRaw[]): number | null {
+  for (const value of [detail, ...recent.map((report) => report.detail)]) {
+    if (!value) continue;
+    const match = value.match(/лимит(?:ом|а)?(?:\s*(?:до|:|—|-))?\s*(\d+(?:[.,]\d+)?)\s*(?:л(?:итр(?:а|ов)?)?)(?=\s|[.,;!?)]|$)/i);
+    if (!match) continue;
+    const liters = Number(match[1].replace(",", "."));
+    if (Number.isFinite(liters) && liters > 0) return liters;
+  }
+  return null;
 }
 
 export function calculateStationRating(input: { selectedFuel: boolean; status: NormalizedFuelStation["status"]; freshness: number; reliability: number; deviationKm: number | null; hasQueue: boolean }): number {

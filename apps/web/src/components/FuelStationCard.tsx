@@ -116,7 +116,7 @@ export const FuelStationCard = memo(function FuelStationCard({ station, recommen
             <span className="h-1.5 w-1.5 rounded-full bg-current shadow-[0_0_10px_currentColor]" />{statusLabel}
           </span>
           {queue ? <span className="inline-flex items-center gap-1 rounded-full bg-amber-400/15 px-3 py-1.5 text-xs font-black text-amber-300"><Users size={13} /> Очередь</span> : null}
-          {details?.limit.active ? <span className="rounded-full bg-orange-400/15 px-3 py-1.5 text-xs font-black text-orange-300">Лимит {details.limit.liters == null ? "" : `${details.limit.liters} л`}</span> : null}
+          {details?.limit.active ? <span className="rounded-full bg-orange-400/15 px-3 py-1.5 text-xs font-black text-orange-300">Лимит: {formatLimit(details)}</span> : null}
         </div>
 
         <section className="relative mt-4">
@@ -193,7 +193,7 @@ function StationDetailsPanel({ details, onReport }: { details: StationDetails; o
       {details.queue.present || details.limit.active ? (
         <div className="grid gap-2">
           {details.queue.present ? <Notice icon={<Users size={16} />} title="Есть очередь" text={[details.queue.vehicleRange ? `${details.queue.vehicleRange} машин` : null, details.queue.confirmations != null ? `${details.queue.confirmations} подтвержд.` : null].filter(Boolean).join(" · ")} tone="amber" /> : null}
-          {details.limit.active ? <Notice icon={<AlertTriangle size={16} />} title="Действует лимит" text={[details.limit.liters != null ? `${details.limit.liters} литров` : null, details.limit.confirmations != null ? `${details.limit.confirmations} подтвержд.` : null].filter(Boolean).join(" · ")} tone="orange" /> : null}
+          {details.limit.active ? <Notice icon={<AlertTriangle size={16} />} title={`Лимит: ${formatLimit(details)}`} text={details.limit.confirmations != null ? `${details.limit.confirmations} подтвержд.` : "Размер лимита пока не подтверждён"} tone="orange" /> : null}
         </div>
       ) : null}
 
@@ -266,6 +266,7 @@ function normalizeFuelKey(value: string): string { const upper = value.toUpperCa
 function fuelOrder(value: string): number { return value === "92" ? 1 : value === "95" ? 2 : value === "98" ? 3 : value === "100" ? 4 : value === "ДТ" ? 5 : 99; }
 function fuelLabel(value: string): string { const key = normalizeFuelKey(value); return key === "ДТ" ? "ДТ" : `АИ-${key}`; }
 function formatPrice(value: number): string { return value.toLocaleString("ru-RU", { minimumFractionDigits: value % 1 ? 2 : 0, maximumFractionDigits: 2 }); }
+function formatLimit(details: StationDetails): string { return details.limit.liters == null ? "размер не указан" : `${details.limit.liters.toLocaleString("ru-RU")} л`; }
 function formatDistance(value: number): string { return value < 10 ? value.toFixed(1) : String(Math.round(value)); }
 function formatDeviation(value?: number | null): string { if (value == null) return "—"; return value < 1 ? `${Math.round(value * 1000)} м` : `${value.toFixed(1)} км`; }
 function relativeTime(value: string | null): string { if (!value) return "нет данных"; const minutes = Math.max(0, Math.round((Date.now() - new Date(value).getTime()) / 60_000)); return minutes < 60 ? `${minutes} мин назад` : minutes < 1_440 ? `${Math.round(minutes / 60)} ч назад` : `${Math.round(minutes / 1_440)} дн назад`; }

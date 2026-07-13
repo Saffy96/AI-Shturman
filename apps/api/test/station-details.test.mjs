@@ -46,3 +46,13 @@ test("status yes with empty fuels confirms fuel without inventing brands", () =>
   assert.deepEqual(station.fuels, []);
   assert.equal(station.fuelBrandsKnown, false);
 });
+
+test("limit liters are recovered from a recent driver report", () => {
+  const station = normalizeStationDetails(
+    "1005",
+    { status: "low", limited: true, limits: { lim: null } },
+    [{ status: "low", detail: "Отпускают с лимитом до 25 л", created_at: "2026-07-13T10:00:00Z" }]
+  );
+  assert.equal(station.limit.active, true);
+  assert.equal(station.limit.liters, 25);
+});
