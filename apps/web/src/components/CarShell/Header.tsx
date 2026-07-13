@@ -1,7 +1,7 @@
 import { Clock3, LocateFixed, Settings2, Wifi, WifiOff } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 
-export function Header({ online, gpsReady, accuracy, routeActive, onOpenSettings }: { online: boolean; gpsReady: boolean; accuracy?: number; routeActive?: boolean; onOpenSettings: () => void }) {
+export function Header({ online, gpsReady, accuracy, routeActive, filtersOpen, onOpenSettings }: { online: boolean; gpsReady: boolean; accuracy?: number; routeActive?: boolean; filtersOpen: boolean; onOpenSettings: () => void }) {
   const [time, setTime] = useState(() => currentTime());
   useEffect(() => { const timer = window.setInterval(() => setTime(currentTime()), 30_000); return () => window.clearInterval(timer); }, []);
 
@@ -13,7 +13,7 @@ export function Header({ online, gpsReady, accuracy, routeActive, onOpenSettings
         <Status icon={online ? <Wifi size={15} /> : <WifiOff size={15} />} active={online} text={online ? "Онлайн" : "Офлайн"} />
         <span className={`route-state ${routeActive ? "route-state--active" : ""}`}>{routeActive ? "Маршрут активен" : "Без маршрута"}</span>
         <span className="top-clock"><Clock3 size={15} /> {time}</span>
-        <button type="button" aria-label="Открыть настройки поиска" onClick={onOpenSettings} className="top-icon-button"><Settings2 size={17} /></button>
+        <button type="button" aria-label="Дополнительные фильтры" aria-expanded={filtersOpen} onClick={onOpenSettings} className="top-icon-button"><Settings2 size={18} /></button>
       </div>
     </header>
   );

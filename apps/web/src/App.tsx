@@ -48,15 +48,17 @@ export function App() {
         gpsReady={Boolean(nav.geolocation.location)}
         accuracy={nav.geolocation.location?.accuracy}
         routeActive={Boolean(nav.routeData?.route)}
-        onOpenSettings={() => nav.setIsRouteEditorOpen(true)}
+        filtersOpen={nav.isFiltersOpen}
+        onOpenSettings={() => nav.setIsFiltersOpen(!nav.isFiltersOpen)}
         editorPanel={editorPanel}
         noticePanel={notice ? <Notice tone={notice.tone} text={notice.text} /> : null}
-        mapControls={!nav.isRouteEditorOpen ? <button type="button" className="floating-edit-button" onClick={() => nav.setIsRouteEditorOpen(true)}>Изменить поиск</button> : null}
+        mapControls={!nav.isRouteEditorOpen ? <button type="button" className="floating-edit-button" onClick={() => { nav.setIsFiltersOpen(false); nav.setIsRouteEditorOpen(true); }}>Изменить поиск</button> : null}
         filterDock={
           <FuelFilterDock
             fuel={nav.fuel}
             fuels={FUEL_OPTIONS}
             filters={nav.filters}
+            filtersOpen={nav.isFiltersOpen}
             mode={nav.selectedMode}
             distanceKm={nav.isRouteMode ? nav.corridorKm : nav.radiusKm}
             distanceOptions={nav.isRouteMode ? CORRIDOR_OPTIONS : RADIUS_OPTIONS}
@@ -65,6 +67,7 @@ export function App() {
             canSearch={nav.canRequestStations}
             onFuelChange={nav.setFuel}
             onFiltersChange={nav.setFilters}
+            onFiltersOpenChange={nav.setIsFiltersOpen}
             onDistanceChange={(value) => nav.isRouteMode ? nav.setCorridorKm(value as CorridorKm) : nav.setRadiusKm(value as RadiusKm)}
             onSearch={() => void nav.checkStations()}
             onRefresh={() => void nav.refresh()}

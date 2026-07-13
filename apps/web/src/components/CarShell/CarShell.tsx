@@ -10,6 +10,7 @@ interface CarShellProps {
   stationPanel?: ReactNode;
   noticePanel?: ReactNode;
   onOpenSettings: () => void;
+  filtersOpen: boolean;
   online: boolean;
   gpsReady: boolean;
   accuracy?: number;
@@ -25,6 +26,7 @@ export function CarShell({
   stationPanel,
   noticePanel,
   onOpenSettings,
+  filtersOpen,
   online,
   gpsReady,
   accuracy,
@@ -33,7 +35,7 @@ export function CarShell({
   return (
     <div className="app-shell">
       <div className="map-layer">{map}</div>
-      <Header online={online} gpsReady={gpsReady} accuracy={accuracy} routeActive={routeActive} onOpenSettings={onOpenSettings} />
+      <Header online={online} gpsReady={gpsReady} accuracy={accuracy} routeActive={routeActive} filtersOpen={filtersOpen} onOpenSettings={onOpenSettings} />
 
       {routePanel ? <div className="route-summary-overlay">{routePanel}</div> : null}
       {editorPanel ? <aside className="route-editor-overlay">{editorPanel}</aside> : null}

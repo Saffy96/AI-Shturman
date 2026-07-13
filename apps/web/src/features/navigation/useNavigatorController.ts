@@ -38,6 +38,7 @@ export function useNavigatorController() {
   const [loadingPhase, setLoadingPhase] = useState<LoadingPhase>(null);
   const [error, setError] = useState<string | null>(null);
   const [isRouteEditorOpen, setIsRouteEditorOpen] = useState(true);
+  const [isFiltersOpen, setIsFiltersOpen] = useState(false);
   const [isNearbyMapPickerOpen, setIsNearbyMapPickerOpen] = useState(false);
   const requestVersionRef = useRef(0);
 
@@ -86,6 +87,7 @@ export function useNavigatorController() {
     clearResults();
     setError(null);
     setIsRouteEditorOpen(true);
+    setIsFiltersOpen(false);
   }, [clearResults, setSelectedMode]);
 
   const resetRoute = useCallback(() => {
@@ -185,8 +187,8 @@ export function useNavigatorController() {
     fromPoint, toPoint, selectedMode, radiusKm, corridorKm, fuel, mapZoom, filters, data, routeData, routePoints,
     routeWarning, routeFallbackHint, selectedLocation, selectedStation, stationFocusVersion, filteredStations,
     geolocation, isOnline, isRouteMode, canRequestStations, isLoading, isBuildingRoute, loadingPhase, error,
-    isRouteEditorOpen, isNearbyMapPickerOpen, locationLabel, sourceLabel,
-    setRadiusKm, setCorridorKm, setFuel, setMapZoom, setFilters, setIsRouteEditorOpen, setIsNearbyMapPickerOpen,
+    isRouteEditorOpen, isFiltersOpen, isNearbyMapPickerOpen, locationLabel, sourceLabel,
+    setRadiusKm, setCorridorKm, setFuel, setMapZoom, setFilters, setIsRouteEditorOpen, setIsFiltersOpen, setIsNearbyMapPickerOpen,
     applyLocation, requestLocation, handleModeChange, handleFromChange, handleToChange, handleSwapRoute, buildRoute,
     checkStations: () => runFuelCheck("real"), useApproximateRoute: () => runFuelCheck("approx"),
     refresh: () => runFuelCheck(routeData?.mode === "route_bbox" ? "approx" : "real"),
