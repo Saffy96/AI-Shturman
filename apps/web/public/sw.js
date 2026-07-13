@@ -1,5 +1,12 @@
-const CACHE_NAME = "ai-shturman-shell-v1";
-const SHELL_ASSETS = ["/", "/manifest.webmanifest", "/icons/icon.svg"];
+const CACHE_NAME = "ai-shturman-shell-v2";
+const SHELL_ASSETS = [
+  "/",
+  "/manifest.webmanifest",
+  "/icons/favicon-32.png",
+  "/icons/apple-touch-icon.png",
+  "/icons/app-icon-192.png",
+  "/icons/app-icon-512.png",
+];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
