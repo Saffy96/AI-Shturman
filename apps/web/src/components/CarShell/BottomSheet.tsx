@@ -11,8 +11,10 @@ export function BottomSheet({ children, summary }: { children: ReactNode; summar
   useEffect(() => { window.localStorage.setItem(storageKey, snapPoint); }, [snapPoint]);
   useEffect(() => {
     const open = () => setSnapPoint("expanded");
+    const collapse = () => setSnapPoint("collapsed");
     window.addEventListener("ai-shturman:open-station", open);
-    return () => window.removeEventListener("ai-shturman:open-station", open);
+    window.addEventListener("ai-shturman:focus-station", collapse);
+    return () => { window.removeEventListener("ai-shturman:open-station", open); window.removeEventListener("ai-shturman:focus-station", collapse); };
   }, []);
 
   function startDrag(event: PointerEvent<HTMLDivElement>) { dragStart.current = event.clientY; event.currentTarget.setPointerCapture(event.pointerId); }

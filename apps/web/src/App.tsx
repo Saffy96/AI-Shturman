@@ -94,6 +94,7 @@ export function App() {
   const [isAdviceVisible, setIsAdviceVisible] = useState(false);
   const [isRouteEditorOpen, setIsRouteEditorOpen] = useState(true);
   const [selectedStation, setSelectedStation] = useState<FuelStation | null>(null);
+  const [stationSelectionVersion, setStationSelectionVersion] = useState(0);
   const routeBuildPromiseRef = useRef<Promise<RoutePoints> | null>(null);
 
   const geolocation = useGeolocation();
@@ -363,6 +364,7 @@ export function App() {
 
   const handleMapStationClick = useCallback((station: FuelStation) => {
     setSelectedStation(station);
+    setStationSelectionVersion((value) => value + 1);
     window.dispatchEvent(new Event("ai-shturman:open-station"));
     window.history.replaceState(null, "", `#station-${station.id}`);
     window.setTimeout(() => document.getElementById(`station-${station.id}`)?.scrollIntoView({ behavior: "smooth", block: "start" }), 220);
@@ -370,8 +372,18 @@ export function App() {
 
   const handleAdviceStationSelect = useCallback((stationId: string) => {
     const station = filteredStations.find((item) => item.id === stationId);
-    if (station) handleMapStationClick(station);
-  }, [filteredStations, handleMapStationClick]);
+    if (station) {
+      setSelectedStation(station);
+      setStationSelectionVersion((value) => value + 1);
+      window.dispatchEvent(new CustomEvent("ai-shturman:focus-station", { detail: { lat: station.lat, lon: station.lon } }));
+    }
+  }, [filteredStations]);
+
+  const handleShowStationOnMap = useCallback((station: FuelStation) => {
+    setSelectedStation(station);
+    setStationSelectionVersion((value) => value + 1);
+    window.dispatchEvent(new CustomEvent("ai-shturman:focus-station", { detail: { lat: station.lat, lon: station.lon } }));
+  }, []);
 
   function handleCancelRoute() {
     setData(null);
@@ -557,7 +569,7 @@ export function App() {
         {data && data.stations.length === 0 && !isLoading ? <EmptyState /> : null}
         {data && data.stations.length > 0 && filteredStations.length === 0 && !isLoading ? <FilterEmptyState /> : null}
 
-        {filteredStations.length > 0 ? <NextStations stations={filteredStations} recommendedStationId={navigatorAdvice?.stationId ?? null} /> : null}
+        {filteredStations.length > 0 ? <NextStations stations={filteredStations} recommendedStationId={navigatorAdvice?.stationId ?? null} selectedStationId={selectedStation?.id ?? null} selectionVersion={stationSelectionVersion} onShowOnMap={handleShowStationOnMap} /> : null}
       </main>
     </CarShell>
   );

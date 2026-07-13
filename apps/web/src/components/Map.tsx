@@ -45,7 +45,17 @@ export function Map({ from, to, location, route = [], stations, zoom, recommende
 
   const showRoute = useCallback(() => {
     if (!mapRef.current || !routeBounds) return;
-    runProgrammaticMove(() => mapRef.current.setBounds(routeBounds, { checkZoomRange: true, zoomMargin: [110, 460, 150, 60], duration: 250 }));
+    const compact = window.matchMedia("(max-width: 767px)").matches;
+    const zoomMargin = compact ? [132, 24, 158, 24] : [112, 430, 140, 56];
+    const isCityRoute = Math.abs(routeBounds[1][0] - routeBounds[0][0]) < 1 && Math.abs(routeBounds[1][1] - routeBounds[0][1]) < 1.5;
+    runProgrammaticMove(() => {
+      const result = mapRef.current.setBounds(routeBounds, { checkZoomRange: true, zoomMargin, duration: 250 });
+      if (isCityRoute && result && typeof result.then === "function") {
+        void result.then(() => {
+          if (mapRef.current?.getZoom() < 11) mapRef.current.setZoom(11, { duration: 180 });
+        });
+      }
+    });
   }, [routeBounds, runProgrammaticMove]);
 
   const showLocation = useCallback(() => {
@@ -76,6 +86,16 @@ export function Map({ from, to, location, route = [], stations, zoom, recommende
     lastLocationKeyRef.current = key;
     showLocation();
   }, [interactionMode, location, mapReady, showLocation]);
+
+  useEffect(() => {
+    const focusStation = (event: Event) => {
+      const detail = (event as CustomEvent<Coordinates>).detail;
+      if (!mapRef.current || !detail || !Number.isFinite(detail.lat) || !Number.isFinite(detail.lon)) return;
+      runProgrammaticMove(() => mapRef.current.setCenter([detail.lat, detail.lon], Math.max(currentZoom, 15), { duration: 240 }));
+    };
+    window.addEventListener("ai-shturman:focus-station", focusStation);
+    return () => window.removeEventListener("ai-shturman:focus-station", focusStation);
+  }, [currentZoom, runProgrammaticMove]);
 
   useEffect(() => () => {
     if (interactionTimerRef.current != null) window.clearTimeout(interactionTimerRef.current);

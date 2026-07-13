@@ -7,11 +7,12 @@ import {
   ExternalLink,
   Fuel,
   Info,
+  LocateFixed,
   MapPin,
   Navigation,
   Users
 } from "lucide-react";
-import { memo, useCallback, useMemo, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import { fetchStationDetails } from "../services/fuelApi";
 import type { FuelStation, StationDetails } from "../types/fuel";
 import { buildTwoGisUrl, buildYandexMapsUrl } from "../utils/maps";
@@ -20,9 +21,12 @@ interface Props {
   station: FuelStation;
   index?: number;
   recommended?: boolean;
+  selected?: boolean;
+  selectionVersion?: number;
+  onShowOnMap?: (station: FuelStation) => void;
 }
 
-export const FuelStationCard = memo(function FuelStationCard({ station, recommended = false }: Props) {
+export const FuelStationCard = memo(function FuelStationCard({ station, recommended = false, selected = false, selectionVersion = 0, onShowOnMap }: Props) {
   const [expanded, setExpanded] = useState(false);
   const [details, setDetails] = useState<StationDetails | null>(null);
   const [detailsError, setDetailsError] = useState<string | null>(null);
@@ -42,6 +46,13 @@ export const FuelStationCard = memo(function FuelStationCard({ station, recommen
       setLoading(false);
     }
   }, [details, loading, station.id]);
+
+  useEffect(() => {
+    if (!selected) return;
+    setExpanded(true);
+    void loadDetails();
+    // selectionVersion intentionally reopens the same station after another map click.
+  }, [selected, selectionVersion]);
 
   const fuels = useMemo(() => collectFuels(station, details), [station, details]);
   const status = details?.status ?? station.status;
@@ -70,7 +81,7 @@ export const FuelStationCard = memo(function FuelStationCard({ station, recommen
   return (
     <article
       id={`station-${station.id}`}
-      className="group scroll-mt-40 overflow-hidden rounded-[26px] border border-white/[.10] bg-[#0b1017] text-white shadow-[0_24px_60px_rgba(0,0,0,.28)]"
+      className={`group scroll-mt-40 overflow-hidden rounded-[26px] border bg-[#0b1017] text-white shadow-[0_24px_60px_rgba(0,0,0,.28)] ${selected ? "border-cyan-400/70 ring-2 ring-cyan-400/20" : "border-white/[.10]"}`}
     >
       <div className="relative overflow-hidden p-4">
         <div className="pointer-events-none absolute -right-16 -top-16 h-44 w-44 rounded-full bg-emerald-400/[.10] blur-3xl" />
@@ -149,8 +160,9 @@ export const FuelStationCard = memo(function FuelStationCard({ station, recommen
           <div className="mt-1 text-[10px] font-semibold leading-relaxed text-slate-400">Актуальность рассчитана по свежести и подтверждениям водителей.</div>
         </div>
 
-        <div className="relative mt-3 grid grid-cols-[1fr_auto] gap-2">
-          <a className="flex min-h-12 items-center justify-center gap-2 rounded-2xl bg-emerald-400 px-4 text-sm font-black text-emerald-950 transition hover:bg-emerald-300 active:scale-[.98]" href={buildYandexMapsUrl(location)} target="_blank" rel="noreferrer"><Navigation size={17} /> Построить маршрут</a>
+        <div className="relative mt-3 grid grid-cols-[1fr_1fr_auto] gap-2">
+          <button type="button" onClick={() => onShowOnMap?.(station)} className="flex min-h-12 items-center justify-center gap-2 rounded-2xl bg-cyan-400 px-3 text-sm font-black text-cyan-950 active:scale-[.98]"><LocateFixed size={17} /> На карте</button>
+          <a className="flex min-h-12 items-center justify-center gap-2 rounded-2xl bg-emerald-400 px-3 text-center text-sm font-black text-emerald-950 transition hover:bg-emerald-300 active:scale-[.98]" href={buildYandexMapsUrl(location)} target="_blank" rel="noreferrer"><Navigation size={17} /> Маршрут</a>
           <a aria-label="Открыть в 2ГИС" className="grid min-h-12 w-12 place-items-center rounded-2xl bg-white/[.08] text-slate-200 transition hover:bg-white/[.13] active:scale-[.98]" href={buildTwoGisUrl(location)} target="_blank" rel="noreferrer"><ExternalLink size={17} /></a>
         </div>
       </div>
