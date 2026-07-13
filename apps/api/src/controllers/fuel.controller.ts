@@ -5,7 +5,8 @@ export async function getFuelStationDetailsController(req: Request, res: Respons
   try {
     const osmId = req.params.osmId?.trim();
     if (!osmId || !/^\d+$/.test(osmId)) throw validationError("osmId must be a numeric OSM identifier");
-    const station = await getFuelStationDetails(osmId);
+    const forceRefresh = req.query.refresh === "true" || req.query.refresh === "1";
+    const station = await getFuelStationDetails(osmId, forceRefresh);
     res.json({ ok: true, station });
   } catch (error) {
     next(error);

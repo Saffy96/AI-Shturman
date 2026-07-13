@@ -10,6 +10,7 @@ import {
   LocateFixed,
   MapPin,
   Navigation,
+  RefreshCw,
   Users
 } from "lucide-react";
 import { memo, useCallback, useEffect, useMemo, useState } from "react";
@@ -32,13 +33,13 @@ export const FuelStationCard = memo(function FuelStationCard({ station, recommen
   const [detailsError, setDetailsError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  const loadDetails = useCallback(async () => {
-    if (details || loading) return;
+  const loadDetails = useCallback(async (forceRefresh = false) => {
+    if ((!forceRefresh && details) || loading) return;
     const osmId = station.id.startsWith("osm:") ? station.id.slice(4) : station.id;
     setLoading(true);
     setDetailsError(null);
     try {
-      const response = await fetchStationDetails(osmId);
+      const response = await fetchStationDetails(osmId, forceRefresh);
       setDetails(response.station);
     } catch {
       setDetailsError("Не удалось загрузить свежие данные.");
@@ -174,20 +175,30 @@ export const FuelStationCard = memo(function FuelStationCard({ station, recommen
 
       {expanded ? (
         <div className="border-t border-white/[.07] bg-[#080c12] p-4">
-          {loading ? <DetailsSkeleton /> : details ? <StationDetailsPanel details={details} onReport={report} /> : detailsError ? <button type="button" onClick={() => void loadDetails()} className="w-full rounded-2xl border border-red-400/20 bg-red-400/10 p-3 text-sm font-bold text-red-200">{detailsError} Нажмите, чтобы повторить</button> : null}
+          {loading && !details ? <DetailsSkeleton /> : details ? <StationDetailsPanel details={details} loading={loading} onRefresh={() => void loadDetails(true)} onReport={report} /> : detailsError ? <button type="button" onClick={() => void loadDetails()} className="w-full rounded-2xl border border-red-400/20 bg-red-400/10 p-3 text-sm font-bold text-red-200">{detailsError} Нажмите, чтобы повторить</button> : null}
         </div>
       ) : null}
     </article>
   );
 });
 
-function StationDetailsPanel({ details, onReport }: { details: StationDetails; onReport: (kind: "fuel" | "queue") => void }) {
+function StationDetailsPanel({ details, loading, onRefresh, onReport }: { details: StationDetails; loading: boolean; onRefresh: () => void; onReport: (kind: "fuel" | "queue") => void }) {
+  const [showAllActivities, setShowAllActivities] = useState(false);
+  const visibleActivities = showAllActivities ? details.activities : details.activities.slice(0, 5);
+  const activityGroups = groupActivitiesByDate(visibleActivities);
+
   return (
     <div className="grid gap-4 text-sm">
+      <div className="flex items-center justify-between gap-3">
+        <div className="text-[10px] font-black uppercase tracking-[.18em] text-slate-500">Данные станции</div>
+        <button type="button" disabled={loading} onClick={onRefresh} className="inline-flex min-h-9 items-center gap-1.5 rounded-xl bg-white/[.06] px-3 text-xs font-black text-slate-300 disabled:opacity-50">
+          <RefreshCw size={13} className={loading ? "animate-spin" : ""} /> Обновить
+        </button>
+      </div>
       <div className="grid grid-cols-3 gap-2">
         <Evidence value={details.confirmationsFresh} label="свежих" />
         <Evidence value={details.confirmations} label="подтверждений" />
-        <Evidence value={details.realCount} label="отметок" />
+        <Evidence value={details.activities.length} label="отметок в списке" />
       </div>
 
       {details.queue.present || details.limit.active ? (
@@ -199,22 +210,43 @@ function StationDetailsPanel({ details, onReport }: { details: StationDetails; o
 
       {details.detail ? <div className="rounded-2xl bg-white/[.05] p-3 font-semibold leading-relaxed text-slate-300">{details.detail}</div> : null}
 
-      {details.recentReports.length ? (
+      {details.activities.length ? (
         <section>
           <h3 className="text-[10px] font-black uppercase tracking-[.18em] text-slate-500">Последние отметки</h3>
-          <div className="mt-2 grid gap-2">
-            {details.recentReports.slice(0, 6).map((report, index) => (
-              <div key={`${report.createdAt}-${index}`} className="rounded-2xl border border-white/[.06] bg-white/[.035] p-3">
-                <div className="font-bold text-slate-200">{report.detail || statusText(report.status)}</div>
-                <div className="mt-2 flex flex-wrap gap-1.5 text-[10px] font-bold text-slate-500">
-                  <span>{formatDate(report.createdAt)}</span>
-                  {report.onSite ? <span className="rounded-full bg-emerald-400/10 px-2 py-0.5 text-emerald-300">был на месте</span> : null}
-                  {report.authorReliable ? <span className="rounded-full bg-sky-400/10 px-2 py-0.5 text-sky-300">проверенный автор</span> : null}
+          <div className="mt-2 grid gap-3">
+            {activityGroups.map((group) => (
+              <div key={group.key}>
+                {showAllActivities ? <div className="mb-1.5 text-[10px] font-black uppercase tracking-wider text-slate-600">{group.title}</div> : null}
+                <div className="grid gap-2">
+                  {group.items.map((activity) => (
+                    <div key={activity.id} className="rounded-2xl border border-white/[.06] bg-white/[.035] p-3">
+                      <div className="font-bold text-slate-200">{activity.text || activityTypeText(activity.type)}</div>
+                      <div className="mt-2 flex flex-wrap gap-1.5 text-[10px] font-bold text-slate-500">
+                        <span>{formatActivityTime(activity.createdAtMs, activity.createdAt)}</span>
+                        {activity.fuelTypes.map((fuel) => <span key={fuel} className="rounded-full bg-white/[.06] px-2 py-0.5">{fuelLabel(fuel)}</span>)}
+                        {activity.wasOnSite ? <span className="rounded-full bg-emerald-400/10 px-2 py-0.5 text-emerald-300">был на месте</span> : null}
+                        {activity.authorReliable ? <span className="rounded-full bg-sky-400/10 px-2 py-0.5 text-sky-300">проверенный автор</span> : null}
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
             ))}
           </div>
+          {details.activities.length > 5 ? (
+            <button type="button" onClick={() => setShowAllActivities((value) => !value)} className="mt-3 min-h-10 w-full rounded-xl bg-white/[.06] px-3 text-xs font-black text-emerald-300">
+              {showAllActivities ? "Свернуть" : `Показать все ${details.activities.length} отметок`}
+            </button>
+          ) : null}
         </section>
+      ) : null}
+
+      {import.meta.env.DEV && details.activityDiagnostics ? (
+        <div className="rounded-xl border border-dashed border-slate-700 p-2 text-[10px] font-semibold text-slate-500">
+          comments: {details.activityDiagnostics.comments} · recent: {details.activityDiagnostics.recent} · после объединения: {details.activityDiagnostics.merged} · после дедупликации: {details.activityDiagnostics.deduplicated}
+          {details.activityDiagnostics.commentsError ? <div className="text-amber-500">comments error: {details.activityDiagnostics.commentsError}</div> : null}
+          {details.activityDiagnostics.recentError ? <div className="text-amber-500">recent error: {details.activityDiagnostics.recentError}</div> : null}
+        </div>
       ) : null}
 
       <div>
@@ -271,5 +303,43 @@ function formatDistance(value: number): string { return value < 10 ? value.toFix
 function formatDeviation(value?: number | null): string { if (value == null) return "—"; return value < 1 ? `${Math.round(value * 1000)} м` : `${value.toFixed(1)} км`; }
 function relativeTime(value: string | null): string { if (!value) return "нет данных"; const minutes = Math.max(0, Math.round((Date.now() - new Date(value).getTime()) / 60_000)); return minutes < 60 ? `${minutes} мин назад` : minutes < 1_440 ? `${Math.round(minutes / 60)} ч назад` : `${Math.round(minutes / 1_440)} дн назад`; }
 function formatDate(value: string | null): string { return value ? new Date(value).toLocaleString("ru-RU", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : "время неизвестно"; }
-function statusText(status: StationDetails["status"]): string { return status === "yes" ? "Топливо есть" : status === "low" ? "Топливо заканчивается" : status === "queue" ? "Есть очередь" : status === "no" ? "Топлива нет / АЗС не работает" : "Нет данных"; }
+type Activity = StationDetails["activities"][number];
+interface ActivityGroup { key: string; title: string; items: Activity[]; }
+
+function groupActivitiesByDate(activities: Activity[]): ActivityGroup[] {
+  const groups = new Map<string, ActivityGroup>();
+  const today = startOfLocalDay(Date.now());
+  const yesterday = today - 86_400_000;
+  for (const activity of activities) {
+    const timestamp = activity.createdAtMs;
+    let key = "unknown";
+    let title = "Время неизвестно";
+    if (Number.isFinite(timestamp)) {
+      const day = startOfLocalDay(timestamp);
+      key = new Date(day).toISOString();
+      title = day === today ? "Сегодня" : day === yesterday ? "Вчера" : new Date(timestamp).toLocaleDateString("ru-RU", { day: "numeric", month: "long" });
+    }
+    const group = groups.get(key) ?? { key, title, items: [] };
+    group.items.push(activity);
+    groups.set(key, group);
+  }
+  return [...groups.values()];
+}
+
+function startOfLocalDay(timestamp: number): number {
+  const date = new Date(timestamp);
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+}
+
+function formatActivityTime(timestamp: number, fallback: string): string {
+  if (!Number.isFinite(timestamp)) return "время неизвестно";
+  const ageMinutes = Math.max(0, Math.round((Date.now() - timestamp) / 60_000));
+  if (ageMinutes < 60) return `${ageMinutes} мин назад`;
+  if (ageMinutes < 24 * 60) return `${Math.round(ageMinutes / 60)} ч назад`;
+  return formatDate(fallback || new Date(timestamp).toISOString());
+}
+
+function activityTypeText(type: Activity["type"]): string {
+  return type === "fuel_available" ? "Топливо есть" : type === "fuel_unavailable" ? "Топлива нет" : type === "queue" ? "Есть очередь" : type === "limit" ? "Действует лимит" : type === "station_closed" ? "АЗС закрыта" : type === "station_open" ? "АЗС открыта" : type === "price" ? "Обновлена цена" : "Отметка водителя";
+}
 function statusTone(status: FuelStation["status"]): string { return status === "yes" ? "bg-emerald-400/15 text-emerald-300" : status === "low" ? "bg-orange-400/15 text-orange-300" : status === "queue" ? "bg-amber-400/15 text-amber-300" : status === "no" ? "bg-red-400/15 text-red-300" : "bg-slate-400/10 text-slate-400"; }

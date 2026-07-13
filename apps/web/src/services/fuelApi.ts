@@ -69,8 +69,9 @@ export async function searchGeo(query: string): Promise<GeoSearchResponse> {
   return requestJson<GeoSearchResponse>(url);
 }
 
-export async function fetchStationDetails(osmId: string): Promise<StationDetailsResponse> {
+export async function fetchStationDetails(osmId: string, forceRefresh = false): Promise<StationDetailsResponse> {
   const url = new URL(`/api/fuel/stations/${encodeURIComponent(osmId)}/details`, API_BASE_URL);
+  if (forceRefresh) url.searchParams.set("refresh", "1");
   return requestJson<StationDetailsResponse>(url);
 }
 

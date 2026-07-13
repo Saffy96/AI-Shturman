@@ -15,6 +15,12 @@ export interface GdebenzPriceRaw {
   t?: string | null;
 }
 
+export interface GdebenzFreshConflictRaw {
+  status?: "yes" | "low" | "queue" | "no" | string | null;
+  ageMin?: number | string | null;
+  [key: string]: unknown;
+}
+
 export type GdebenzFuelNowRaw =
   | string
   | number
@@ -35,7 +41,7 @@ export interface GdebenzStationDetailsRaw {
   fuelsNow?: GdebenzFuelNowRaw;
   pricesNow?: Record<string, GdebenzPriceRaw> | null;
   confidenceBase?: number | string | null;
-  freshConflict?: boolean | null;
+  freshConflict?: boolean | GdebenzFreshConflictRaw | null;
   limited?: boolean | null;
   limits?: GdebenzLimitsRaw | null;
   addr?: string | null;
@@ -43,13 +49,40 @@ export interface GdebenzStationDetailsRaw {
 }
 
 export interface GdebenzRecentReportRaw {
+  id?: number | string | null;
+  sourceId?: number | string | null;
+  type?: string | null;
   status?: GdebenzStationStatus;
   detail?: string | null;
+  text?: string | null;
+  fuelTypes?: unknown;
+  createdAt?: string | number | null;
   created_at?: string | null;
+  date?: string | number | null;
+  timestamp?: string | number | null;
+  time?: string | number | null;
+  ts?: string | number | null;
+  publishedAt?: string | number | null;
+  updatedAt?: string | number | null;
   edited?: boolean | null;
   author_reliable?: boolean | null;
   on_site?: boolean | null;
+  [key: string]: unknown;
 }
+
+export interface GdebenzRecentPageRaw {
+  data?: unknown;
+  items?: unknown;
+  comments?: unknown;
+  recent?: unknown;
+  total?: number | string | null;
+  limit?: number | string | null;
+  offset?: number | string | null;
+  page?: number | string | null;
+  [key: string]: unknown;
+}
+
+export type GdebenzRecentResponseRaw = GdebenzRecentReportRaw[] | GdebenzRecentPageRaw;
 
 export interface GdebenzStationRaw {
   osm_id: number | string;

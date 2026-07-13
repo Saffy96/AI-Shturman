@@ -3,7 +3,7 @@ import type {
   GdebenzBBoxStationRaw,
   GdebenzClientOptions,
   GdebenzNearbyResponse,
-  GdebenzRecentReportRaw,
+  GdebenzRecentResponseRaw,
   GdebenzStationDetailsRaw,
   NearbyStationsParams,
   StationsBBoxParams
@@ -56,17 +56,17 @@ export async function getStationDetails(
 
 export async function getStationRecent(
   osmId: number | string,
-  limit = 12,
+  limit = 30,
   fingerprint?: string,
   options: GdebenzClientOptions = {}
-): Promise<GdebenzRecentReportRaw[]> {
+): Promise<GdebenzRecentResponseRaw> {
   const query = new URLSearchParams({ limit: String(limit) });
 
   if (fingerprint) {
     query.set("fp", fingerprint);
   }
 
-  return requestJson<GdebenzRecentReportRaw[]>(
+  return requestJson<GdebenzRecentResponseRaw>(
     `/comments/${encodeURIComponent(String(osmId))}/recent?${query.toString()}`,
     options
   );

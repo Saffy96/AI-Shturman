@@ -28,7 +28,7 @@ import {
   GdebenzClientError,
   type GdebenzBBoxStationRaw,
   type GdebenzNearbyResponse,
-  type GdebenzRecentReportRaw,
+  type GdebenzRecentResponseRaw,
   type GdebenzStationDetailsRaw,
   type GdebenzStationRaw
 } from "@ai-shturman/gdebenz-client";
@@ -36,7 +36,14 @@ import { env } from "../config/env.js";
 import { TtlCache } from "../utils/ttl-cache.js";
 import { getFirstGeoResult, reverseGeo } from "./geo.service.js";
 import { getDrivingRoute } from "./openroute.service.js";
-import { mergeStationSources, normalizeStationDetails, stationNormalizer } from "./station-normalizer.service.js";
+import {
+  extractActivityRecords,
+  mergeStationActivities,
+  mergeStationSources,
+  normalizeStationActivities,
+  normalizeStationDetails,
+  stationNormalizer
+} from "./station-normalizer.service.js";
 
 interface NearbyFuelParams {
   lat: number;
@@ -71,7 +78,7 @@ interface StationRouteMetrics {
 const nearbyCache = new TtlCache<GdebenzNearbyResponse>(env.cacheTtlMs);
 const bboxCache = new TtlCache<GdebenzBBoxStationRaw[]>(env.cacheTtlMs);
 const detailsCache = new TtlCache<GdebenzStationDetailsRaw>(90_000);
-const recentCache = new TtlCache<GdebenzRecentReportRaw[]>(45_000);
+const recentCache = new TtlCache<GdebenzRecentResponseRaw>(90_000);
 const stationAddressCache = new TtlCache<string>(7 * 24 * 60 * 60 * 1000);
 const MAX_ROUTE_CHUNKS = 20;
 const MAX_GDEBENZ_ROUTE_REQUESTS = 24;
@@ -79,17 +86,49 @@ const MAX_CHUNK_SPLIT_DEPTH = 2;
 
 interface RequestBudget { remaining: number; }
 
-export async function getFuelStationDetails(osmId: number | string): Promise<NormalizedStationDetails> {
-  const [details, recent] = await Promise.all([
-    getCachedStationDetails(osmId),
-    getCachedStationRecent(osmId)
+export async function getFuelStationDetails(osmId: number | string, forceRefresh = false): Promise<NormalizedStationDetails> {
+  const [commentsResult, recentResult] = await Promise.allSettled([
+    getCachedStationDetails(osmId, forceRefresh),
+    getCachedStationRecent(osmId, forceRefresh)
   ]);
 
-  return normalizeStationDetails(osmId, details, recent);
+  if (commentsResult.status === "rejected" && recentResult.status === "rejected") {
+    throw new AggregateError([commentsResult.reason, recentResult.reason], "Failed to load station details");
+  }
+
+  const commentsResponse = commentsResult.status === "fulfilled" ? commentsResult.value : {};
+  const recentResponse = recentResult.status === "fulfilled" ? recentResult.value : [];
+  const commentRecords = extractActivityRecords(commentsResponse);
+  const recentRecords = extractActivityRecords(recentResponse);
+  const normalizedComments = normalizeStationActivities(osmId, commentRecords, "comments");
+  const normalizedRecent = normalizeStationActivities(osmId, recentRecords, "recent");
+  const mergedActivities = [...normalizedRecent, ...normalizedComments];
+  const activities = mergeStationActivities([normalizedRecent, normalizedComments]);
+  const station = normalizeStationDetails(osmId, commentsResponse, recentRecords, activities);
+  const diagnostics = {
+    comments: commentRecords.length,
+    recent: recentRecords.length,
+    merged: mergedActivities.length,
+    deduplicated: activities.length,
+    ...(commentsResult.status === "rejected" ? { commentsError: errorMessage(commentsResult.reason) } : {}),
+    ...(recentResult.status === "rejected" ? { recentError: errorMessage(recentResult.reason) } : {})
+  };
+
+  if (env.nodeEnv === "development") {
+    station.activityDiagnostics = diagnostics;
+    console.group(`[Gdebenz details] ${osmId}`);
+    console.log("comments raw:", commentsResult.status === "fulfilled" ? commentsResult.value : commentsResult.reason);
+    console.log("recent raw:", recentResult.status === "fulfilled" ? recentResult.value : recentResult.reason);
+    console.log("merged normalized:", activities);
+    console.groupEnd();
+  }
+
+  return station;
 }
 
-async function getCachedStationDetails(osmId: number | string): Promise<GdebenzStationDetailsRaw> {
+async function getCachedStationDetails(osmId: number | string, forceRefresh: boolean): Promise<GdebenzStationDetailsRaw> {
   const key = String(osmId);
+  if (forceRefresh) detailsCache.delete(key);
   const cached = detailsCache.get(key);
   if (cached) return cached;
   const value = await getStationDetails(osmId, undefined, gdebenzOptions());
@@ -97,13 +136,18 @@ async function getCachedStationDetails(osmId: number | string): Promise<GdebenzS
   return value;
 }
 
-async function getCachedStationRecent(osmId: number | string): Promise<GdebenzRecentReportRaw[]> {
+async function getCachedStationRecent(osmId: number | string, forceRefresh: boolean): Promise<GdebenzRecentResponseRaw> {
   const key = String(osmId);
+  if (forceRefresh) recentCache.delete(key);
   const cached = recentCache.get(key);
   if (cached) return cached;
-  const value = await getStationRecent(osmId, 12, undefined, gdebenzOptions());
+  const value = await getStationRecent(osmId, 30, undefined, gdebenzOptions());
   recentCache.set(key, value);
   return value;
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 function gdebenzOptions() {

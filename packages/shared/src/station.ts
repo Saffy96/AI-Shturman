@@ -8,6 +8,41 @@ export interface StationQueue { present: boolean; vehicleRange: string | null; c
 export interface StationLimit { active: boolean; liters: number | null; confirmations: number | null; }
 export interface StationPrice { price: number | null; confirmations: number | null; updatedAt: string | null; }
 export interface StationRecentReport { status: NormalizedStationStatus; detail: string | null; createdAt: string | null; edited: boolean; authorReliable: boolean; onSite: boolean; }
+export type StationActivityType =
+  | "fuel_available"
+  | "fuel_unavailable"
+  | "queue"
+  | "limit"
+  | "station_closed"
+  | "station_open"
+  | "price"
+  | "comment"
+  | "unknown";
+export interface StationActivity {
+  id: string;
+  sourceId?: string;
+  osmId: string;
+  type: StationActivityType;
+  text: string;
+  fuelTypes: string[];
+  queue?: { label?: string; minCars?: number; maxCars?: number };
+  limitLiters?: number;
+  createdAt: string;
+  createdAtMs: number;
+  wasOnSite?: boolean;
+  authorReliable?: boolean;
+  edited?: boolean;
+  source: "comments" | "recent";
+  raw?: unknown;
+}
+export interface StationActivityDiagnostics {
+  comments: number;
+  recent: number;
+  merged: number;
+  deduplicated: number;
+  commentsError?: string;
+  recentError?: string;
+}
 export interface NormalizedStationDetails {
   id: string;
   status: NormalizedStationStatus;
@@ -29,6 +64,8 @@ export interface NormalizedStationDetails {
   cvt: number | string | null;
   detail: string | null;
   recentReports: StationRecentReport[];
+  activities: StationActivity[];
+  activityDiagnostics?: StationActivityDiagnostics;
   sourceLabel: "Данные водителей";
 }
 export interface StationStopCost { deviationKm: number; extraTimeMin: number; fuelLiters: number; fuelPriceRub: number | null; totalRub: number | null; }

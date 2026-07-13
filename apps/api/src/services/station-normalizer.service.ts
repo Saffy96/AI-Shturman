@@ -7,7 +7,8 @@ import type {
 import {
   detailMentionsQueue, getFreshnessLabel, getQueueLabel, getRecommendation, getStatusLabel,
   hasRequestedFuel, haversineDistanceKm, normalizeStationStatus, parseFuels, toNumberOrNull,
-  type NormalizedFuelStation, type NormalizedStationDetails, type StationPrice, type StationSource
+  type NormalizedFuelStation, type NormalizedStationDetails, type StationActivity, type StationActivityType,
+  type StationPrice, type StationSource
 } from "@ai-shturman/shared";
 
 export interface StationRouteMetrics { distanceFromRouteKm?: number | null; distanceFromStartKm?: number | null; routePositionLabel?: string | null; }
@@ -44,13 +45,15 @@ export class StationNormalizer {
 
 export function normalizeStationDetails(
   osmId: number | string,
-  raw: GdebenzStationDetailsRaw,
-  recent: GdebenzRecentReportRaw[]
+  raw: GdebenzStationDetailsRaw = {},
+  recent: GdebenzRecentReportRaw[] = [],
+  activities: StationActivity[] = normalizeStationActivities(osmId, recent, "recent")
 ): NormalizedStationDetails {
   const status = normalizeStationStatus(raw.status);
   const fuels = parseFuels(raw.fuelsNow);
   const limits = raw.limits;
-  const queuePresent = status === "queue" || limits?.q === "yes";
+  const queuePresent = status === "queue" || limits?.q === "yes"
+    || (isRecord(raw.freshConflict) && raw.freshConflict.status === "queue");
   const confidenceBase = toNumberOrNull(raw.confidenceBase);
 
   return {
@@ -66,7 +69,7 @@ export function normalizeStationDetails(
     updatedAt: stringValue(raw.updated),
     seeded: raw.seeded === true,
     views: toNumberOrNull(raw.views),
-    freshConflict: raw.freshConflict === true,
+    freshConflict: raw.freshConflict === true || isRecord(raw.freshConflict),
     queue: {
       present: queuePresent,
       vehicleRange: stringValue(limits?.qn),
@@ -90,8 +93,200 @@ export function normalizeStationDetails(
       authorReliable: report.author_reliable === true,
       onSite: report.on_site === true
     })),
+    activities,
     sourceLabel: "Данные водителей"
   };
+}
+
+const ACTIVITY_DATE_FIELDS = ["createdAt", "created_at", "date", "timestamp", "time", "ts", "publishedAt", "updatedAt"] as const;
+
+export function parseActivityTimestamp(raw: unknown): number | null {
+  if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+    const record = raw as Record<string, unknown>;
+    for (const field of ACTIVITY_DATE_FIELDS) {
+      if (record[field] == null) continue;
+      const parsed = parseActivityTimestamp(record[field]);
+      if (parsed != null) return parsed;
+    }
+    return null;
+  }
+
+  if (typeof raw === "number") {
+    if (!Number.isFinite(raw)) return null;
+    const timestamp = raw < 10_000_000_000 ? raw * 1000 : raw;
+    return Number.isFinite(new Date(timestamp).getTime()) ? timestamp : null;
+  }
+
+  if (typeof raw !== "string" || !raw.trim()) return null;
+  const value = raw.trim();
+  if (/^\d+(?:\.\d+)?$/.test(value)) return parseActivityTimestamp(Number(value));
+  const apiLocalDate = value.match(/^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?)$/);
+  const timestamp = Date.parse(apiLocalDate ? `${apiLocalDate[1]}T${apiLocalDate[2]}+03:00` : value);
+  return Number.isFinite(timestamp) ? timestamp : null;
+}
+
+export function extractActivityRecords(payload: unknown): GdebenzRecentReportRaw[] {
+  if (Array.isArray(payload)) return payload.filter(isRecord) as GdebenzRecentReportRaw[];
+  if (!isRecord(payload)) return [];
+  for (const key of ["data", "items", "comments", "recent"] as const) {
+    const nested = payload[key];
+    if (Array.isArray(nested)) return nested.filter(isRecord) as GdebenzRecentReportRaw[];
+    if (isRecord(nested)) {
+      const records = extractActivityRecords(nested);
+      if (records.length) return records;
+    }
+  }
+  return [];
+}
+
+export function normalizeStationActivities(
+  osmId: number | string,
+  records: GdebenzRecentReportRaw[],
+  source: StationActivity["source"]
+): StationActivity[] {
+  return records.map((raw, index) => normalizeActivity(osmId, raw, source, index));
+}
+
+export function mergeStationActivities(groups: StationActivity[][]): StationActivity[] {
+  const deduplicated = new Map<string, StationActivity>();
+  for (const item of groups.flat()) {
+    const key = getActivityDedupKey(item);
+    const existing = deduplicated.get(key);
+    deduplicated.set(key, existing ? chooseMoreCompleteActivity(existing, item) : item);
+  }
+  return [...deduplicated.values()].sort((a, b) => {
+    const aTime = Number.isFinite(a.createdAtMs) ? a.createdAtMs : Number.NEGATIVE_INFINITY;
+    const bTime = Number.isFinite(b.createdAtMs) ? b.createdAtMs : Number.NEGATIVE_INFINITY;
+    return bTime - aTime;
+  });
+}
+
+export function getActivityDedupKey(item: StationActivity): string {
+  if (item.sourceId) return `source-id:${item.sourceId}`;
+  return [
+    item.osmId,
+    item.type,
+    Number.isFinite(item.createdAtMs) ? item.createdAtMs : "unknown-date",
+    item.text.trim(),
+    item.fuelTypes.join(","),
+    item.limitLiters ?? "",
+    item.queue?.minCars ?? "",
+    item.queue?.maxCars ?? "",
+    item.wasOnSite ?? ""
+  ].join("|");
+}
+
+export function chooseMoreCompleteActivity(first: StationActivity, second: StationActivity): StationActivity {
+  return activityCompleteness(second) > activityCompleteness(first) ? second : first;
+}
+
+function normalizeActivity(
+  osmId: number | string,
+  raw: GdebenzRecentReportRaw,
+  source: StationActivity["source"],
+  index: number
+): StationActivity {
+  const text = firstString(raw.detail, raw.text, raw.message, raw.comment) ?? activityFallbackText(raw);
+  const createdAtMs = parseActivityTimestamp(raw) ?? Number.NaN;
+  const createdAt = Number.isFinite(createdAtMs) ? new Date(createdAtMs).toISOString() : firstDateValue(raw) ?? "";
+  const sourceId = firstString(raw.sourceId, raw.id, raw.comment_id, raw.commentId);
+  const fuelTypes = parseFuels(raw.fuelTypes ?? raw.fuels ?? raw.fuels_now, text);
+  const limitLiters = parseLimitLiters(raw.limitLiters ?? raw.limit_liters, text);
+  const queue = parseActivityQueue(raw.queue, text);
+  const type = normalizeActivityType(raw.type, raw.status, text, limitLiters);
+  const identity = sourceId ?? [String(osmId), type, createdAtMs, text, index].join("|");
+
+  return {
+    id: `activity:${stableHash(identity)}`,
+    ...(sourceId ? { sourceId } : {}),
+    osmId: String(osmId),
+    type,
+    text,
+    fuelTypes,
+    ...(queue ? { queue } : {}),
+    ...(limitLiters != null ? { limitLiters } : {}),
+    createdAt,
+    createdAtMs,
+    ...(typeof raw.on_site === "boolean" ? { wasOnSite: raw.on_site } : {}),
+    ...(typeof raw.author_reliable === "boolean" ? { authorReliable: raw.author_reliable } : {}),
+    ...(typeof raw.edited === "boolean" ? { edited: raw.edited } : {}),
+    source
+  };
+}
+
+function normalizeActivityType(type: unknown, status: unknown, text: string, limitLiters: number | null): StationActivityType {
+  const value = String(type ?? "").trim().toLowerCase();
+  const aliases: Record<string, StationActivityType> = {
+    fuel: "fuel_available", yes: "fuel_available", available: "fuel_available", fuel_available: "fuel_available",
+    no: "fuel_unavailable", unavailable: "fuel_unavailable", fuel_unavailable: "fuel_unavailable",
+    low: limitLiters != null ? "limit" : "fuel_available", queue: "queue", limit: "limit",
+    closed: "station_closed", station_closed: "station_closed", open: "station_open", station_open: "station_open",
+    price: "price", comment: "comment"
+  };
+  if (aliases[value]) return aliases[value];
+  const statusValue = String(status ?? "").trim().toLowerCase();
+  if (aliases[statusValue]) return aliases[statusValue];
+  if (/очеред/i.test(text)) return "queue";
+  if (limitLiters != null || /лимит/i.test(text)) return "limit";
+  return "unknown";
+}
+
+function parseActivityQueue(rawQueue: unknown, text: string): StationActivity["queue"] | undefined {
+  const range = text.match(/(?:≈|~)?\s*(\d+)\s*[–—-]\s*(\d+)\s*машин/i);
+  if (range) return { label: range[0].trim(), minCars: Number(range[1]), maxCars: Number(range[2]) };
+  const count = text.match(/(?:очеред\S*\s*)?(\d+)\s*машин/i);
+  if (count) return { label: count[0].trim(), minCars: Number(count[1]), maxCars: Number(count[1]) };
+  if (/очеред/i.test(text) || rawQueue === true || isRecord(rawQueue)) return { label: "Очередь" };
+  return undefined;
+}
+
+function parseLimitLiters(rawLimit: unknown, text: string): number | null {
+  const direct = toNumberOrNull(rawLimit);
+  if (direct != null && direct > 0) return direct;
+  const match = text.match(/лимит(?:ом|а)?(?:\s*(?:до|:|—|-))?\s*(\d+(?:[.,]\d+)?)\s*л/i);
+  if (!match) return null;
+  const value = Number(match[1].replace(",", "."));
+  return Number.isFinite(value) && value > 0 ? value : null;
+}
+
+function activityFallbackText(raw: GdebenzRecentReportRaw): string {
+  const status = normalizeStationStatus(raw.status);
+  return status === "unknown" ? "Отметка без описания" : getStatusLabel(status);
+}
+
+function firstDateValue(raw: GdebenzRecentReportRaw): string | null {
+  for (const field of ACTIVITY_DATE_FIELDS) {
+    const value = raw[field];
+    if (typeof value === "string" && value.trim()) return value.trim();
+    if (typeof value === "number" && Number.isFinite(value)) return String(value);
+  }
+  return null;
+}
+
+function firstString(...values: unknown[]): string | null {
+  for (const value of values) {
+    if ((typeof value === "string" || typeof value === "number") && String(value).trim()) return String(value).trim();
+  }
+  return null;
+}
+
+function activityCompleteness(item: StationActivity): number {
+  return Number(Boolean(item.sourceId)) * 4 + Number(Boolean(item.text)) + item.fuelTypes.length * 2
+    + Number(Boolean(item.queue)) * 2 + Number(item.limitLiters != null) * 2 + Number(item.wasOnSite != null)
+    + Number(item.authorReliable != null) + Number(item.edited != null) + Number(Number.isFinite(item.createdAtMs));
+}
+
+function stableHash(value: string): string {
+  let hash = 2_166_136_261;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16_777_619);
+  }
+  return (hash >>> 0).toString(36);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
 function findLimitLiters(detail: string | null | undefined, recent: GdebenzRecentReportRaw[]): number | null {

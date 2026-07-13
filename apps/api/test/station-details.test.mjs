@@ -1,7 +1,13 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
-import { normalizeStationDetails } from "../dist/services/station-normalizer.service.js";
+import {
+  extractActivityRecords,
+  mergeStationActivities,
+  normalizeStationActivities,
+  normalizeStationDetails,
+  parseActivityTimestamp
+} from "../dist/services/station-normalizer.service.js";
 
 async function fixture(name) {
   const url = new URL(`./fixtures/${name}.json`, import.meta.url);
@@ -47,6 +53,12 @@ test("status yes with empty fuels confirms fuel without inventing brands", () =>
   assert.equal(station.fuelBrandsKnown, false);
 });
 
+test("object-shaped fresh queue conflict from the real API is preserved", () => {
+  const station = normalizeStationDetails("1004", { status: "yes", freshConflict: { status: "queue", ageMin: 26 } }, []);
+  assert.equal(station.freshConflict, true);
+  assert.equal(station.queue.present, true);
+});
+
 test("limit liters are recovered from a recent driver report", () => {
   const station = normalizeStationDetails(
     "1005",
@@ -55,4 +67,54 @@ test("limit liters are recovered from a recent driver report", () => {
   );
   assert.equal(station.limit.active, true);
   assert.equal(station.limit.liters, 25);
+});
+
+test("activity timestamps support ISO, Unix seconds and Unix milliseconds", () => {
+  const iso = parseActivityTimestamp("2026-07-13T10:00:00Z");
+  assert.equal(iso, Date.parse("2026-07-13T10:00:00Z"));
+  assert.equal(parseActivityTimestamp(1_752_400_000), 1_752_400_000_000);
+  assert.equal(parseActivityTimestamp(1_752_400_000_000), 1_752_400_000_000);
+  assert.equal(parseActivityTimestamp({ publishedAt: "2026-07-13T09:00:00Z" }), Date.parse("2026-07-13T09:00:00Z"));
+  assert.equal(parseActivityTimestamp("не дата"), null);
+});
+
+test("activities are merged, deduplicated and sorted only after the merge", () => {
+  const comments = normalizeStationActivities("42", [
+    { id: "same", status: "queue", detail: "92 · Очередь 5–20 машин", created_at: "2026-07-13T09:00:00Z" },
+    { status: "yes", detail: "Одинаковый текст", created_at: "2026-07-13T10:00:00Z" },
+    { status: "yes", detail: "Одинаковый текст", created_at: "2026-07-12T23:59:00Z" }
+  ], "comments");
+  const recent = normalizeStationActivities("42", [
+    { id: "same", status: "queue", detail: "92 · Очередь 5–20 машин", created_at: "2026-07-13T09:00:00Z", on_site: true },
+    { status: "no", detail: "Другой тип", created_at: "2026-07-13T09:00:00Z" }
+  ], "recent");
+  const merged = mergeStationActivities([recent, comments]);
+
+  assert.equal(merged.length, 4);
+  assert.deepEqual(merged.map((item) => item.createdAtMs), [
+    Date.parse("2026-07-13T10:00:00Z"),
+    Date.parse("2026-07-13T09:00:00Z"),
+    Date.parse("2026-07-13T09:00:00Z"),
+    Date.parse("2026-07-12T23:59:00Z")
+  ]);
+  assert.equal(merged.find((item) => item.sourceId === "same").wasOnSite, true);
+});
+
+test("unknown activity types and invalid dates are preserved at the end", () => {
+  const activities = normalizeStationActivities("42", [
+    { type: "new-api-event", detail: "Новый тип", created_at: "не дата" },
+    { status: "yes", detail: "Свежая", created_at: "2026-07-13T10:00:00Z" }
+  ], "recent");
+  const merged = mergeStationActivities([activities]);
+  assert.equal(merged[0].text, "Свежая");
+  assert.equal(merged[1].type, "unknown");
+  assert.equal(merged[1].text, "Новый тип");
+  assert.equal(Number.isNaN(merged[1].createdAtMs), true);
+});
+
+test("activity arrays are extracted from supported response wrappers", () => {
+  const item = { status: "yes", created_at: "2026-07-13T10:00:00Z" };
+  assert.deepEqual(extractActivityRecords([item]), [item]);
+  assert.deepEqual(extractActivityRecords({ data: { comments: [item] }, total: 1 }), [item]);
+  assert.deepEqual(extractActivityRecords({ status: "yes", realCount: 37 }), []);
 });

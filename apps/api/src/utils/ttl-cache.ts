@@ -29,4 +29,8 @@ export class TtlCache<T> {
       value
     });
   }
+
+  delete(key: string): void {
+    this.entries.delete(key);
+  }
 }
