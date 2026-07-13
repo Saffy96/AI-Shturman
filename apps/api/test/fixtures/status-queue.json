@@ -1,0 +1,23 @@
+{
+  "details": {
+    "status": "queue",
+    "detail": "Большая очередь",
+    "confirmations": 12,
+    "confirmationsFresh": 8,
+    "realCount": 18,
+    "updated": "2026-07-13T09:00:00Z",
+    "seeded": false,
+    "views": 240,
+    "fuelsNow": ["АИ-92", "АИ-95", "ДТ"],
+    "pricesNow": { "95": { "p": 61.4, "n": 3, "t": "2026-07-13T08:55:00Z" } },
+    "confidenceBase": 0.84,
+    "freshConflict": false,
+    "limited": true,
+    "limits": { "q": "yes", "qn": "20–50", "qCnt": 7, "lim": 30, "limCnt": 5 },
+    "addr": "Трасса М-7",
+    "cvt": 2
+  },
+  "recent": [
+    { "status": "queue", "detail": "Около 30 машин", "created_at": "2026-07-13T08:58:00Z", "edited": false, "author_reliable": false, "on_site": true }
+  ]
+}

@@ -1,0 +1,23 @@
+{
+  "details": {
+    "status": "low",
+    "detail": "Топливо заканчивается",
+    "confirmations": 5,
+    "confirmationsFresh": 3,
+    "realCount": 11,
+    "updated": "2026-07-13T09:20:00Z",
+    "seeded": true,
+    "views": 87,
+    "fuelsNow": { "92": true, "95": true },
+    "pricesNow": { "92": { "p": "57.90", "n": "2", "t": "2026-07-13T09:10:00Z" } },
+    "confidenceBase": 0.67,
+    "freshConflict": true,
+    "limited": true,
+    "limits": { "q": "yes", "qn": "5–10", "qCnt": 2, "lim": "20", "limCnt": "3" },
+    "addr": null,
+    "cvt": null
+  },
+  "recent": [
+    { "status": "low", "detail": "Остался 92 и 95, лимит 20 л", "created_at": "2026-07-13T09:15:00Z", "edited": true, "author_reliable": true, "on_site": true }
+  ]
+}

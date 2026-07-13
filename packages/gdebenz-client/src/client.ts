@@ -2,8 +2,9 @@ import { GdebenzClientError } from "./errors.js";
 import type {
   GdebenzBBoxStationRaw,
   GdebenzClientOptions,
-  GdebenzCommentRaw,
   GdebenzNearbyResponse,
+  GdebenzRecentReportRaw,
+  GdebenzStationDetailsRaw,
   NearbyStationsParams,
   StationsBBoxParams
 } from "./types.js";
@@ -38,19 +39,37 @@ export async function getStationsByBBox(
   return requestJson<GdebenzBBoxStationRaw[]>(`/stations?${query.toString()}`, options);
 }
 
-export async function getStationComments(
+export async function getStationDetails(
   osmId: number | string,
-  fp?: string,
+  fingerprint?: string,
   options: GdebenzClientOptions = {}
-): Promise<GdebenzCommentRaw[]> {
+): Promise<GdebenzStationDetailsRaw> {
   const query = new URLSearchParams();
 
-  if (fp) {
-    query.set("fp", fp);
+  if (fingerprint) {
+    query.set("fp", fingerprint);
   }
 
   const suffix = query.size > 0 ? `?${query.toString()}` : "";
-  return requestJson<GdebenzCommentRaw[]>(`/comments/${encodeURIComponent(String(osmId))}${suffix}`, options);
+  return requestJson<GdebenzStationDetailsRaw>(`/comments/${encodeURIComponent(String(osmId))}${suffix}`, options);
+}
+
+export async function getStationRecent(
+  osmId: number | string,
+  limit = 12,
+  fingerprint?: string,
+  options: GdebenzClientOptions = {}
+): Promise<GdebenzRecentReportRaw[]> {
+  const query = new URLSearchParams({ limit: String(limit) });
+
+  if (fingerprint) {
+    query.set("fp", fingerprint);
+  }
+
+  return requestJson<GdebenzRecentReportRaw[]>(
+    `/comments/${encodeURIComponent(String(osmId))}/recent?${query.toString()}`,
+    options
+  );
 }
 
 async function requestJson<T>(path: string, options: GdebenzClientOptions): Promise<T> {

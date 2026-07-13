@@ -527,7 +527,7 @@ export function App() {
         {data && data.stations.length === 0 && !isLoading ? <EmptyState /> : null}
         {data && data.stations.length > 0 && filteredStations.length === 0 && !isLoading ? <FilterEmptyState /> : null}
 
-        {filteredStations.length > 0 ? <NextStations stations={filteredStations} /> : null}
+        {filteredStations.length > 0 ? <NextStations stations={filteredStations} recommendedStationId={navigatorAdvice?.stationId ?? null} /> : null}
       </main>
     </CarShell>
   );
@@ -1032,7 +1032,7 @@ function isFreshnessFilter(value: unknown): value is StationFilters["freshness"]
 }
 
 function isStatusFilter(value: unknown): value is StationFilters["status"] {
-  return value === "all" || value === "yes" || value === "low" || value === "no" || value === "unknown";
+  return value === "all" || value === "yes" || value === "low" || value === "queue" || value === "no" || value === "unknown";
 }
 
 function formatDistance(value: number): string {

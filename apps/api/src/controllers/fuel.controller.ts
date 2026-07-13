@@ -1,5 +1,16 @@
 import type { NextFunction, Request, Response } from "express";
-import { getNearbyFuel, getRouteFuel, getRouteFuelReal } from "../services/fuel.service.js";
+import { getFuelStationDetails, getNearbyFuel, getRouteFuel, getRouteFuelReal } from "../services/fuel.service.js";
+
+export async function getFuelStationDetailsController(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const osmId = req.params.osmId?.trim();
+    if (!osmId || !/^\d+$/.test(osmId)) throw validationError("osmId must be a numeric OSM identifier");
+    const station = await getFuelStationDetails(osmId);
+    res.json({ ok: true, station });
+  } catch (error) {
+    next(error);
+  }
+}
 
 export async function getNearbyFuelController(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {

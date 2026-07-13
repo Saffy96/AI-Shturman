@@ -1,5 +1,55 @@
-export type GdebenzStationStatus = "yes" | "low" | "no" | null;
+export type GdebenzStationStatus = "yes" | "low" | "queue" | "no" | null;
 export type GdebenzConflict = "queue" | "no" | null;
+
+export interface GdebenzLimitsRaw {
+  q?: "yes" | "no" | null;
+  qn?: string | null;
+  qCnt?: number | string | null;
+  lim?: number | string | null;
+  limCnt?: number | string | null;
+}
+
+export interface GdebenzPriceRaw {
+  p?: number | string | null;
+  n?: number | string | null;
+  t?: string | null;
+}
+
+export type GdebenzFuelNowRaw =
+  | string
+  | number
+  | boolean
+  | null
+  | GdebenzFuelNowRaw[]
+  | { [key: string]: GdebenzFuelNowRaw };
+
+export interface GdebenzStationDetailsRaw {
+  status?: GdebenzStationStatus;
+  detail?: string | null;
+  confirmations?: number | string | null;
+  confirmationsFresh?: number | string | null;
+  realCount?: number | string | null;
+  updated?: string | null;
+  seeded?: boolean | null;
+  views?: number | string | null;
+  fuelsNow?: GdebenzFuelNowRaw;
+  pricesNow?: Record<string, GdebenzPriceRaw> | null;
+  confidenceBase?: number | string | null;
+  freshConflict?: boolean | null;
+  limited?: boolean | null;
+  limits?: GdebenzLimitsRaw | null;
+  addr?: string | null;
+  cvt?: number | string | null;
+}
+
+export interface GdebenzRecentReportRaw {
+  status?: GdebenzStationStatus;
+  detail?: string | null;
+  created_at?: string | null;
+  edited?: boolean | null;
+  author_reliable?: boolean | null;
+  on_site?: boolean | null;
+}
 
 export interface GdebenzStationRaw {
   osm_id: number | string;
@@ -35,16 +85,6 @@ export interface GdebenzBBoxStationRaw {
   status?: GdebenzStationStatus;
   fuels_now?: unknown;
   conflict?: GdebenzConflict;
-  [key: string]: unknown;
-}
-
-export interface GdebenzCommentRaw {
-  status?: GdebenzStationStatus;
-  detail?: string | null;
-  created_at?: string | null;
-  edited?: boolean | null;
-  author_reliable?: boolean | null;
-  on_site?: boolean | null;
   [key: string]: unknown;
 }
 

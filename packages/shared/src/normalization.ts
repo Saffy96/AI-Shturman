@@ -8,7 +8,7 @@ import type {
 const FUEL_ORDER = ["92", "95", "98", "100", "ДТ"];
 
 export function normalizeStationStatus(status: GdebenzRawStatus | undefined): NormalizedStationStatus {
-  if (status === "yes" || status === "low" || status === "no") {
+  if (status === "yes" || status === "low" || status === "queue" || status === "no") {
     return status;
   }
 
@@ -21,6 +21,8 @@ export function getStatusLabel(status: NormalizedStationStatus): string {
       return "Есть топливо";
     case "low":
       return "Мало топлива / нестабильно";
+    case "queue":
+      return "Топливо возможно есть, но есть очередь";
     case "no":
       return "Нет топлива или не работает";
     case "unknown":

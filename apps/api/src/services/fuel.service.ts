@@ -17,21 +17,26 @@ import {
   type GeoSearchResult,
   type NearbyFuelResponse,
   type NormalizedFuelStation,
+  type NormalizedStationDetails,
   type RouteFuelResponse
 } from "@ai-shturman/shared";
 import {
   getStationsByBBox,
   getNearbyStations,
+  getStationDetails,
+  getStationRecent,
   GdebenzClientError,
   type GdebenzBBoxStationRaw,
   type GdebenzNearbyResponse,
+  type GdebenzRecentReportRaw,
+  type GdebenzStationDetailsRaw,
   type GdebenzStationRaw
 } from "@ai-shturman/gdebenz-client";
 import { env } from "../config/env.js";
 import { TtlCache } from "../utils/ttl-cache.js";
 import { getFirstGeoResult, reverseGeo } from "./geo.service.js";
 import { getDrivingRoute } from "./openroute.service.js";
-import { mergeStationSources, stationNormalizer } from "./station-normalizer.service.js";
+import { mergeStationSources, normalizeStationDetails, stationNormalizer } from "./station-normalizer.service.js";
 
 interface NearbyFuelParams {
   lat: number;
@@ -65,12 +70,45 @@ interface StationRouteMetrics {
 
 const nearbyCache = new TtlCache<GdebenzNearbyResponse>(env.cacheTtlMs);
 const bboxCache = new TtlCache<GdebenzBBoxStationRaw[]>(env.cacheTtlMs);
+const detailsCache = new TtlCache<GdebenzStationDetailsRaw>(90_000);
+const recentCache = new TtlCache<GdebenzRecentReportRaw[]>(45_000);
 const stationAddressCache = new TtlCache<string>(7 * 24 * 60 * 60 * 1000);
 const MAX_ROUTE_CHUNKS = 20;
 const MAX_GDEBENZ_ROUTE_REQUESTS = 24;
 const MAX_CHUNK_SPLIT_DEPTH = 2;
 
 interface RequestBudget { remaining: number; }
+
+export async function getFuelStationDetails(osmId: number | string): Promise<NormalizedStationDetails> {
+  const [details, recent] = await Promise.all([
+    getCachedStationDetails(osmId),
+    getCachedStationRecent(osmId)
+  ]);
+
+  return normalizeStationDetails(osmId, details, recent);
+}
+
+async function getCachedStationDetails(osmId: number | string): Promise<GdebenzStationDetailsRaw> {
+  const key = String(osmId);
+  const cached = detailsCache.get(key);
+  if (cached) return cached;
+  const value = await getStationDetails(osmId, undefined, gdebenzOptions());
+  detailsCache.set(key, value);
+  return value;
+}
+
+async function getCachedStationRecent(osmId: number | string): Promise<GdebenzRecentReportRaw[]> {
+  const key = String(osmId);
+  const cached = recentCache.get(key);
+  if (cached) return cached;
+  const value = await getStationRecent(osmId, 12, undefined, gdebenzOptions());
+  recentCache.set(key, value);
+  return value;
+}
+
+function gdebenzOptions() {
+  return { baseUrl: env.gdebenzBaseUrl, timeoutMs: env.gdebenzTimeoutMs };
+}
 
 export async function getNearbyFuel(params: NearbyFuelParams): Promise<NearbyFuelResponse> {
   const rawResponse = await getCachedNearbyStations(params);
@@ -386,7 +424,7 @@ function normalizeStation(
     prices: null,
     hasRequestedFuel: hasFuel,
     hasQueue,
-    queue: { present: hasQueue, estimatedMinutes: hasQueue ? 5 : 0 },
+    queue: { present: hasQueue, vehicleRange: null, confirmations: null, estimatedMinutes: hasQueue ? 5 : 0 },
     queueLabel: hasQueue ? "Есть очередь" : getQueueLabel(raw.conflict),
     confidence: toNumberOrNull(getUnknownField(raw, "confidence_base")),
     confirmations: toNumberOrNull(getUnknownField(raw, "confirmations")),

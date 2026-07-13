@@ -1,0 +1,23 @@
+{
+  "details": {
+    "status": "no",
+    "detail": "Заправка не работает",
+    "confirmations": 6,
+    "confirmationsFresh": 4,
+    "realCount": 9,
+    "updated": "2026-07-13T08:10:00Z",
+    "seeded": false,
+    "views": 112,
+    "fuelsNow": [],
+    "pricesNow": {},
+    "confidenceBase": 0.91,
+    "freshConflict": false,
+    "limited": false,
+    "limits": { "q": "no", "qn": null, "qCnt": 0, "lim": null, "limCnt": 0 },
+    "addr": "Тестовая улица, 1",
+    "cvt": 1
+  },
+  "recent": [
+    { "status": "no", "detail": "АЗС закрыта, заправка не работает", "created_at": "2026-07-13T08:05:00Z", "edited": false, "author_reliable": true, "on_site": true }
+  ]
+}

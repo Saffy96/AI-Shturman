@@ -4,7 +4,8 @@ import type {
   NearbyFuelParams,
   NearbyFuelResponse,
   RouteFuelParams,
-  RouteFuelResponse
+  RouteFuelResponse,
+  StationDetailsResponse
 } from "../types/fuel";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:4000";
@@ -66,6 +67,11 @@ export async function searchGeo(query: string): Promise<GeoSearchResponse> {
   url.searchParams.set("q", query);
 
   return requestJson<GeoSearchResponse>(url);
+}
+
+export async function fetchStationDetails(osmId: string): Promise<StationDetailsResponse> {
+  const url = new URL(`/api/fuel/stations/${encodeURIComponent(osmId)}/details`, API_BASE_URL);
+  return requestJson<StationDetailsResponse>(url);
 }
 
 export async function reverseGeo(lat: number, lon: number): Promise<GeoSearchResult> {
