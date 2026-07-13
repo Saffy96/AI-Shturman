@@ -6,6 +6,7 @@ import { NavigatorAdviceCard } from "./components/NavigatorAdviceCard";
 import { RouteForm } from "./components/RouteForm";
 import { formatDuration, RouteSummary } from "./components/RouteSummary";
 import { NextStations } from "./components/NextStations";
+import { MapPicker } from "./components/MapPicker";
 import { SummaryCard } from "./components/SummaryCard";
 import { GeolocationRequestError, useGeolocation } from "./hooks/useGeolocation";
 import { useNetworkStatus } from "./hooks/useNetworkStatus";
@@ -39,7 +40,7 @@ const kazanLocation: Coordinates = {
   lon: 49.106414
 };
 
-type LocationSource = "browser" | "kazan" | "manual";
+type LocationSource = "browser" | "kazan" | "manual" | "map";
 type FuelResponse = NearbyFuelResponse | RouteFuelResponse;
 type RouteRequestMode = "real" | "approx";
 
@@ -56,7 +57,8 @@ interface RoutePoints {
 const locationSourceLabels: Record<LocationSource, string> = {
   browser: "GPS / браузер",
   kazan: "Казань по умолчанию",
-  manual: "Введено вручную"
+  manual: "Введено вручную",
+  map: "Выбрано на карте"
 };
 
 export function App() {
@@ -88,6 +90,7 @@ export function App() {
   const [loadingPhase, setLoadingPhase] = useState<"route" | "stations" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isManualFormOpen, setIsManualFormOpen] = useState(false);
+  const [isNearbyMapPickerOpen, setIsNearbyMapPickerOpen] = useState(false);
   const [manualLat, setManualLat] = useState("");
   const [manualLon, setManualLon] = useState("");
   const [manualError, setManualError] = useState<string | null>(null);
@@ -489,14 +492,23 @@ export function App() {
 
           <div className="mt-4 grid gap-2">
             {!isRouteMode ? (
-              <button
-                className="min-h-14 rounded-xl bg-slate-950 px-4 text-lg font-black text-white transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
-                type="button"
-                onClick={handleLocationRequest}
-                disabled={geolocation.isLocating || isLoading}
-              >
-                📍 {geolocation.isLocating ? "Получаем..." : "Моё местоположение"}
-              </button>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  className="min-h-14 rounded-xl bg-slate-950 px-3 text-sm font-black text-white transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60 sm:text-base"
+                  type="button"
+                  onClick={handleLocationRequest}
+                  disabled={geolocation.isLocating || isLoading}
+                >
+                  📍 {geolocation.isLocating ? "Получаем..." : "Моё место"}
+                </button>
+                <button
+                  className="min-h-14 rounded-xl bg-cyan-500 px-3 text-sm font-black text-cyan-950 active:scale-[0.98] sm:text-base"
+                  type="button"
+                  onClick={() => setIsNearbyMapPickerOpen(true)}
+                >
+                  🗺 Выбрать на карте
+                </button>
+              </div>
             ) : null}
 
             <button
@@ -571,6 +583,7 @@ export function App() {
 
         {filteredStations.length > 0 ? <NextStations stations={filteredStations} recommendedStationId={navigatorAdvice?.stationId ?? null} selectedStationId={selectedStation?.id ?? null} selectionVersion={stationSelectionVersion} onShowOnMap={handleShowStationOnMap} /> : null}
       </main>
+      {isNearbyMapPickerOpen ? <MapPicker initial={selectedLocation?.coords} onClose={() => setIsNearbyMapPickerOpen(false)} onSelect={(point) => { applyLocation({ lat: point.lat, lon: point.lon }, "map"); setIsNearbyMapPickerOpen(false); }} /> : null}
     </CarShell>
   );
 }
