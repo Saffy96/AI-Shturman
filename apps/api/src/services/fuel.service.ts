@@ -83,6 +83,7 @@ const stationAddressCache = new TtlCache<string>(7 * 24 * 60 * 60 * 1000);
 const MAX_ROUTE_CHUNKS = 20;
 const MAX_GDEBENZ_ROUTE_REQUESTS = 24;
 const MAX_CHUNK_SPLIT_DEPTH = 2;
+const DETAILS_RETRY_DELAYS_MS = [0, 300, 900] as const;
 // Gdebenz serves a 30-minute public cache when fp is omitted. Its own web app
 // always sends a fingerprint; this stable read-only fingerprint selects the
 // fresh response while our short local cache still protects the upstream.
@@ -132,22 +133,59 @@ export async function getFuelStationDetails(osmId: number | string, forceRefresh
 
 async function getCachedStationDetails(osmId: number | string, forceRefresh: boolean): Promise<GdebenzStationDetailsRaw> {
   const key = String(osmId);
-  if (forceRefresh) detailsCache.delete(key);
-  const cached = detailsCache.get(key);
-  if (cached) return cached;
-  const value = await getStationDetails(osmId, GDEBENZ_DETAILS_FINGERPRINT, gdebenzOptions());
-  detailsCache.set(key, value);
-  return value;
+  const stale = detailsCache.peek(key);
+  if (!forceRefresh) {
+    const cached = detailsCache.get(key);
+    if (cached) return cached;
+  }
+  try {
+    const value = await retryGdebenzRequest(() => getStationDetails(osmId, GDEBENZ_DETAILS_FINGERPRINT, gdebenzOptions()));
+    detailsCache.set(key, value);
+    return value;
+  } catch (error) {
+    if (stale) return stale;
+    throw error;
+  }
 }
 
 async function getCachedStationRecent(osmId: number | string, forceRefresh: boolean): Promise<GdebenzRecentResponseRaw> {
   const key = String(osmId);
-  if (forceRefresh) recentCache.delete(key);
-  const cached = recentCache.get(key);
-  if (cached) return cached;
-  const value = await getStationRecent(osmId, 30, GDEBENZ_DETAILS_FINGERPRINT, gdebenzOptions());
-  recentCache.set(key, value);
-  return value;
+  const stale = recentCache.peek(key);
+  if (!forceRefresh) {
+    const cached = recentCache.get(key);
+    if (cached) return cached;
+  }
+  try {
+    const value = await retryGdebenzRequest(() => getStationRecent(osmId, 30, GDEBENZ_DETAILS_FINGERPRINT, gdebenzOptions()));
+    recentCache.set(key, value);
+    return value;
+  } catch (error) {
+    if (stale) return stale;
+    throw error;
+  }
+}
+
+async function retryGdebenzRequest<T>(request: () => Promise<T>): Promise<T> {
+  let lastError: unknown;
+  for (const delayMs of DETAILS_RETRY_DELAYS_MS) {
+    if (delayMs > 0) await delay(delayMs);
+    try {
+      return await request();
+    } catch (error) {
+      lastError = error;
+      if (!isRetryableGdebenzError(error)) throw error;
+    }
+  }
+  throw lastError;
+}
+
+function isRetryableGdebenzError(error: unknown): boolean {
+  return error instanceof GdebenzClientError
+    && (error.isTimeout || error.statusCode == null || error.statusCode === 429 || error.statusCode >= 500);
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function errorMessage(error: unknown): string {

@@ -23,6 +23,10 @@ export class TtlCache<T> {
     return entry.value;
   }
 
+  peek(key: string): T | null {
+    return this.entries.get(key)?.value ?? null;
+  }
+
   set(key: string, value: T): void {
     this.entries.set(key, {
       expiresAt: Date.now() + this.ttlMs,
