@@ -4,13 +4,17 @@ import { getFuelStationDetails, getNearbyFuel, getRouteFuel, getRouteFuelReal } 
 export async function getFuelStationDetailsController(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     const osmId = req.params.osmId?.trim();
-    if (!osmId || !/^\d+$/.test(osmId)) throw validationError("osmId must be a numeric OSM identifier");
+    if (!osmId || !isValidStationId(osmId)) throw validationError("osmId must be a valid station identifier");
     const forceRefresh = req.query.refresh === "true" || req.query.refresh === "1";
     const station = await getFuelStationDetails(osmId, forceRefresh);
     res.json({ ok: true, station });
   } catch (error) {
     next(error);
   }
+}
+
+export function isValidStationId(value: string): boolean {
+  return /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/.test(value);
 }
 
 export async function getNearbyFuelController(req: Request, res: Response, next: NextFunction): Promise<void> {

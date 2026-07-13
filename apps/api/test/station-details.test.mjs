@@ -8,11 +8,19 @@ import {
   normalizeStationDetails,
   parseActivityTimestamp
 } from "../dist/services/station-normalizer.service.js";
+import { isValidStationId } from "../dist/controllers/fuel.controller.js";
 
 async function fixture(name) {
   const url = new URL(`./fixtures/${name}.json`, import.meta.url);
   return JSON.parse(await readFile(url, "utf8"));
 }
+
+test("station identifiers accept OSM and gdebenz user stations", () => {
+  assert.equal(isValidStationId("2569209746"), true);
+  assert.equal(isValidStationId("usr_sFrTISvNRdo"), true);
+  assert.equal(isValidStationId("../comments"), false);
+  assert.equal(isValidStationId("station id"), false);
+});
 
 test("HAR A: status no keeps the shutdown explanation and recent reliability", async () => {
   const raw = await fixture("status-no");
