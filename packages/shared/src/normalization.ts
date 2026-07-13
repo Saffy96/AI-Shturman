@@ -73,11 +73,17 @@ export function parseFuels(fuelsNow: unknown, detail?: string | null): string[] 
 
   addFuelsFromText(text, fuels);
 
-  if (fuels.size === 0 && detail) {
-    addFuelsFromText(detail, fuels);
+  if (detail) {
+    addFuelsFromText(stripNonFuelQuantities(detail), fuels);
   }
 
   return FUEL_ORDER.filter((fuel) => fuels.has(fuel));
+}
+
+function stripNonFuelQuantities(detail: string): string {
+  return detail
+    .replace(/ОЧЕРЕД\w*[^·;|]*/gi, " ")
+    .replace(/ЛИМИТ\w*[^·;|]*/gi, " ");
 }
 
 export function detailMentionsQueue(detail: string | null | undefined): boolean {
@@ -160,7 +166,7 @@ function addFuelsFromText(value: string, fuels: Set<string>): void {
     fuels.add("92");
   }
 
-  if (/\bДТ\b|ДИЗЕЛ|DIESEL|\bDT\b/.test(normalized)) {
+  if (/(?:^|[^А-ЯA-Z0-9])ДТ(?:$|[^А-ЯA-Z0-9])|ДИЗЕЛ|DIESEL|\bDT\b/.test(normalized)) {
     fuels.add("ДТ");
   }
 }
