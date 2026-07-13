@@ -50,7 +50,7 @@ export function useNavigatorController() {
   const allStations = useMemo(() => routeData?.mode === "route_real"
     ? responseStations.filter((station) => station.distanceFromRouteKm == null || station.distanceFromRouteKm <= corridorKm)
     : responseStations, [corridorKm, responseStations, routeData?.mode]);
-  const filteredStations = useMemo(() => filterStations(allStations, filters, fuel), [allStations, filters, fuel]);
+  const filteredStations = useMemo(() => filterStations(allStations, filters), [allStations, filters]);
   const canRequestStations = isRouteMode ? Boolean(routePoints) : Boolean(selectedLocation);
   const locationLabel = selectedLocation ? `${selectedLocation.coords.lat.toFixed(6)}, ${selectedLocation.coords.lon.toFixed(6)}` : "Геопозиция не получена";
   const sourceLabel = selectedLocation ? LOCATION_SOURCE_LABELS[selectedLocation.source] : "Не выбран";

@@ -36,8 +36,11 @@ export function FuelFilterDock({ fuel, fuels, filters, filtersOpen, mode, distan
         <div className="filter-popover-panel__header"><div><span>Настройки выдачи</span><strong>Дополнительные фильтры</strong></div><button type="button" onClick={() => onFiltersOpenChange(false)} aria-label="Закрыть фильтры"><X size={18} /></button></div>
         <FiltersPanel filters={filters} onChange={onFiltersChange} />
       </div> : null}
-      <div className="fuel-dock__row" aria-label="Выбор топлива">
-        {fuels.map((item) => <button key={item} type="button" aria-pressed={fuel === item} className="fuel-pill" onClick={() => onFuelChange(item)}>{item === "all" ? "Все" : item === "ДТ" ? item : `АИ-${item}`}</button>)}
+      <div className="fuel-dock__row" aria-label="Интересующее топливо">
+        {fuels.map((item) => {
+          const label = item === "all" ? "Все" : item === "ДТ" ? item : `АИ-${item}`;
+          return <button key={item} type="button" aria-pressed={fuel === item} title={item === "all" ? "Не учитывать марку топлива" : `${label}: учитывать при поиске и оценке АЗС`} className="fuel-pill" onClick={() => onFuelChange(item)}>{label}</button>;
+        })}
       </div>
       <div className="fuel-dock__tools">
         <label className="dock-select"><Filter size={15} /><span className="sr-only">{mode === "route" ? "Ширина коридора" : "Радиус поиска"}</span><select value={distanceKm} onChange={(event) => onDistanceChange(Number(event.target.value))}>{distanceOptions.map((value) => <option key={value} value={value}>{value} км</option>)}</select></label>
