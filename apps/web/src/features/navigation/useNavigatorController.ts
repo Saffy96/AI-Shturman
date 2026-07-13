@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useGeolocation } from "../../hooks/useGeolocation";
 import { useNetworkStatus } from "../../hooks/useNetworkStatus";
 import { fetchNearbyFuel, fetchRouteFuel } from "../../services/fuelApi";
@@ -54,6 +54,12 @@ export function useNavigatorController() {
   const canRequestStations = isRouteMode ? Boolean(routePoints) : Boolean(selectedLocation);
   const locationLabel = selectedLocation ? `${selectedLocation.coords.lat.toFixed(6)}, ${selectedLocation.coords.lon.toFixed(6)}` : "Геопозиция не получена";
   const sourceLabel = selectedLocation ? LOCATION_SOURCE_LABELS[selectedLocation.source] : "Не выбран";
+
+  useEffect(() => {
+    if (selectedStation && !filteredStations.some((station) => station.id === selectedStation.id)) {
+      setSelectedStation(null);
+    }
+  }, [filteredStations, selectedStation]);
 
   const clearResults = useCallback(() => {
     requestVersionRef.current += 1;

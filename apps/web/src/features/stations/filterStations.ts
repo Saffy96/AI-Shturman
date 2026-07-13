@@ -4,7 +4,7 @@ import type { FuelStation, FuelType, StationFilters } from "../../types/fuel";
 export function filterStations(stations: FuelStation[], filters: StationFilters, fuel: FuelType): FuelStation[] {
   return stations.filter((station) => {
     if (fuel !== "all" && !hasRequestedFuel(station.fuels, fuel)) return false;
-    if (filters.availability === "withFuel" && station.status !== "yes" && station.status !== "low") return false;
+    if (filters.availability === "withFuel" && station.status !== "yes" && station.status !== "queue") return false;
     if (filters.availability === "excludeNoFuel" && station.status === "no") return false;
     if (filters.queue === "withoutQueue" && station.hasQueue) return false;
     if (filters.queue === "onlyQueue" && !station.hasQueue) return false;
