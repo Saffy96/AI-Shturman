@@ -37,7 +37,7 @@ export function normalizeFilters(value: unknown): StationFilters | null {
   if (!value || typeof value !== "object") return null;
   const filters = value as Partial<StationFilters>;
   return {
-    availability: filters.availability === "withFuel" || filters.availability === "withSelectedFuel" || filters.availability === "excludeNoFuel" ? filters.availability : DEFAULT_FILTERS.availability,
+    availability: filters.availability === "withFuel" || filters.availability === "excludeNoFuel" ? filters.availability : DEFAULT_FILTERS.availability,
     queue: filters.queue === "withoutQueue" || filters.queue === "onlyQueue" ? filters.queue : DEFAULT_FILTERS.queue,
     freshness: filters.freshness === "fresh" || filters.freshness === "freshOrMedium" || filters.freshness === "hideOld" ? filters.freshness : DEFAULT_FILTERS.freshness,
     status: filters.status === "yes" || filters.status === "low" || filters.status === "queue" || filters.status === "no" || filters.status === "unknown" ? filters.status : DEFAULT_FILTERS.status,

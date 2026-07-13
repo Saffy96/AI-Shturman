@@ -2,7 +2,7 @@ import type { Coordinates, FuelType, StationFilters } from "../../types/fuel";
 
 export const RADIUS_OPTIONS = [20, 50, 100] as const;
 export const CORRIDOR_OPTIONS = [5, 10, 20, 50] as const;
-export const FUEL_OPTIONS: readonly FuelType[] = ["92", "95", "98", "100", "ДТ"];
+export const FUEL_OPTIONS: readonly FuelType[] = ["all", "92", "95", "98", "100", "ДТ"];
 
 export const DEFAULT_FILTERS: StationFilters = {
   availability: "all",

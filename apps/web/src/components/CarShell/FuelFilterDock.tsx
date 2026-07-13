@@ -37,7 +37,7 @@ export function FuelFilterDock({ fuel, fuels, filters, filtersOpen, mode, distan
         <FiltersPanel filters={filters} onChange={onFiltersChange} />
       </div> : null}
       <div className="fuel-dock__row" aria-label="Выбор топлива">
-        {fuels.map((item) => <button key={item} type="button" aria-pressed={fuel === item} className="fuel-pill" onClick={() => onFuelChange(item)}>{item === "ДТ" ? item : `АИ-${item}`}</button>)}
+        {fuels.map((item) => <button key={item} type="button" aria-pressed={fuel === item} className="fuel-pill" onClick={() => onFuelChange(item)}>{item === "all" ? "Все" : item === "ДТ" ? item : `АИ-${item}`}</button>)}
       </div>
       <div className="fuel-dock__tools">
         <label className="dock-select"><Filter size={15} /><span className="sr-only">{mode === "route" ? "Ширина коридора" : "Радиус поиска"}</span><select value={distanceKm} onChange={(event) => onDistanceChange(Number(event.target.value))}>{distanceOptions.map((value) => <option key={value} value={value}>{value} км</option>)}</select></label>

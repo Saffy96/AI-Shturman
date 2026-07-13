@@ -20,7 +20,7 @@ export class StationNormalizer {
     const detail = stringValue(raw.detail);
     const status = normalizeStationStatus(raw.status);
     const fuels = parseFuels(raw.fuels_now, detail);
-    const selectedFuel = hasRequestedFuel(fuels, requestedFuel);
+    const selectedFuel = requestedFuel === "all" || hasRequestedFuel(fuels, requestedFuel);
     const updatedAt = stringValue(raw.last_at);
     const freshnessLabel = getFreshnessLabel(updatedAt);
     const freshness = freshnessScore(updatedAt);
@@ -31,7 +31,7 @@ export class StationNormalizer {
     const deviation = route?.distanceFromRouteKm ?? null;
     const rating = calculateStationRating({ selectedFuel, status, freshness, reliability, deviationKm: deviation, hasQueue });
     const prices = parsePrices(raw);
-    const stopCost = calculateStopCost(deviation, prices?.[requestedFuel] ?? null);
+    const stopCost = calculateStopCost(deviation, requestedFuel === "all" ? null : prices?.[requestedFuel] ?? null);
     return {
       id: `osm:${raw.osm_id}`, source: "gdebenz", sources: ["gdebenz", "osm"], brand: stringValue(raw.brand), name: stringValue(raw.name), address: stringValue(raw.addr), lat, lon,
       distanceKm: toNumberOrNull(raw.distance_km) ?? fallbackDistanceKm ?? null, status, statusLabel: getStatusLabel(status), fuels, hasRequestedFuel: selectedFuel,

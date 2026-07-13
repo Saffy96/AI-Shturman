@@ -8,7 +8,7 @@ import type {
   RouteFuelResponse as SharedRouteFuelResponse
 } from "@ai-shturman/shared";
 
-export type FuelType = "92" | "95" | "98" | "100" | "ДТ";
+export type FuelType = "all" | "92" | "95" | "98" | "100" | "ДТ";
 
 export type Coordinates = SharedCoordinates;
 export type FuelSummary = SharedFuelSummary;
@@ -17,7 +17,7 @@ export type StationDetails = NormalizedStationDetails;
 export type GeoSearchResult = SharedGeoSearchResult;
 export type GeoSearchResponse = SharedGeoSearchResponse;
 export type SearchMode = "nearby" | "route";
-export type AvailabilityFilter = "all" | "withFuel" | "withSelectedFuel" | "excludeNoFuel";
+export type AvailabilityFilter = "all" | "withFuel" | "excludeNoFuel";
 export type QueueFilter = "all" | "withoutQueue" | "onlyQueue";
 export type FreshnessFilter = "all" | "fresh" | "freshOrMedium" | "hideOld";
 export type StatusFilter = "all" | "yes" | "low" | "queue" | "no" | "unknown";

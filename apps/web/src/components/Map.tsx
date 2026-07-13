@@ -4,6 +4,18 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Coordinates, FuelStation, GeoSearchResult } from "../types/fuel";
 
 type MapInteractionMode = "automatic" | "manual";
+type ClusterTone = "no" | "queue" | "low" | "unknown" | "yes";
+
+interface YandexGeoObjectLike {
+  properties?: { get?: (key: string) => unknown };
+}
+
+interface YandexClustererLike {
+  createCluster: (center: number[], geoObjects: YandexGeoObjectLike[]) => {
+    options?: { set?: (key: string, value: string) => void };
+    properties?: { set?: (key: string, value: string) => void };
+  };
+}
 
 interface Props {
   from?: GeoSearchResult | null;
@@ -106,10 +118,23 @@ export function Map({ from, to, location, route = [], stations, zoom, selectedSt
     interactionTimerRef.current = window.setTimeout(() => onZoomChange(nextZoom), 150);
   }, [onZoomChange]);
 
+  const configureClusterer = useCallback((clusterer: YandexClustererLike | null) => {
+    if (!clusterer) return;
+    const createCluster = clusterer.createCluster.bind(clusterer);
+    clusterer.createCluster = (center, geoObjects) => {
+      const cluster = createCluster(center, geoObjects);
+      const tone = aggregateClusterTone(geoObjects.map(readClusterTone));
+      cluster.options?.set?.("preset", clusterPreset(tone));
+      cluster.properties?.set?.("hintContent", clusterHint(tone, geoObjects.length));
+      return cluster;
+    };
+  }, []);
+
   const markers = useMemo(() => stations.map((station) => {
     const selected = selectedStation?.id === station.id;
     return <StationMarker key={station.id} station={station} selected={selected} compact={currentZoom < 11} onClick={onStationClick} />;
   }), [currentZoom, onStationClick, selectedStation?.id, stations]);
+  const clusterStatusKey = useMemo(() => stations.map((station) => `${station.id}:${stationClusterTone(station)}`).join("|"), [stations]);
 
   return <section className="relative h-full w-full overflow-hidden bg-[#05070b]" aria-label="Карта АЗС">
     <YMaps query={{ apikey: import.meta.env.VITE_YANDEX_MAPS_API_KEY ?? "", lang: "ru_RU", load: "package.full" }}>
@@ -125,7 +150,7 @@ export function Map({ from, to, location, route = [], stations, zoom, selectedSt
         {from ? <Placemark geometry={[from.lat, from.lon]} properties={{ iconCaption: `A · ${from.name}`, balloonContent: from.address }} options={{ preset: "islands#darkGreenCircleDotIcon" }} /> : null}
         {to ? <Placemark geometry={[to.lat, to.lon]} properties={{ iconCaption: `Б · ${to.name}`, balloonContent: to.address }} options={{ preset: "islands#redCircleDotIcon" }} /> : null}
         {location ? <Placemark geometry={[location.lat, location.lon]} properties={{ iconCaption: "Вы здесь" }} options={{ preset: "islands#blueCircleDotIcon", zIndex: 900 }} /> : null}
-        <Clusterer options={{ preset: "islands#invertedDarkGreenClusterIcons", groupByCoordinates: false, gridSize: currentZoom < 10 ? 96 : 64, clusterDisableClickZoom: false, clusterOpenBalloonOnClick: false }}>
+        <Clusterer key={clusterStatusKey} instanceRef={configureClusterer} options={{ preset: "islands#invertedGrayClusterIcons", groupByCoordinates: false, gridSize: currentZoom < 10 ? 96 : 64, clusterDisableClickZoom: false, clusterOpenBalloonOnClick: false }}>
           {markers}
         </Clusterer>
       </YandexMap>
@@ -146,7 +171,7 @@ const StationMarker = memo(function StationMarker({ station, selected, compact, 
   const handleClick = useCallback(() => onClick?.(station), [onClick, station]);
   return <Placemark
     geometry={[station.lat, station.lon]}
-    properties={{ iconContent: compact ? visual.compactSymbol : visual.symbol, hintContent: `${station.brand || station.name || "АЗС"} · ${visual.label}` }}
+    properties={{ iconContent: compact ? visual.compactSymbol : visual.symbol, hintContent: `${station.brand || station.name || "АЗС"} · ${visual.label}`, clusterTone: stationClusterTone(station) }}
     options={{ preset: selected ? "islands#circleStretchyIcon" : "islands#circleIcon", iconColor: visual.color, zIndex: selected ? 1200 : visual.zIndex }}
     modules={["geoObject.addon.hint"]}
     onClick={handleClick}
@@ -168,4 +193,46 @@ function stationVisual(station: FuelStation) {
   if (station.hasQueue || station.status === "queue") return { color: "#eab308", symbol: "≋", compactSymbol: "•", label: "есть очередь", zIndex: 800 };
   if (station.status === "unknown") return { color: "#64748b", symbol: "?", compactSymbol: "•", label: "нет данных", zIndex: 500 };
   return { color: "#22c55e", symbol: "✓", compactSymbol: "•", label: "топливо есть", zIndex: 900 };
+}
+
+function stationClusterTone(station: FuelStation): ClusterTone {
+  if (station.status === "no") return "no";
+  if (station.hasQueue || station.status === "queue") return "queue";
+  if (station.status === "low") return "low";
+  if (station.status === "unknown") return "unknown";
+  return "yes";
+}
+
+function readClusterTone(geoObject: YandexGeoObjectLike): ClusterTone {
+  const tone = geoObject.properties?.get?.("clusterTone");
+  return tone === "no" || tone === "queue" || tone === "low" || tone === "yes" ? tone : "unknown";
+}
+
+export function aggregateClusterTone(tones: ClusterTone[]): ClusterTone {
+  if (tones.includes("no")) return "no";
+  if (tones.includes("queue")) return "queue";
+  if (tones.includes("low")) return "low";
+  if (tones.includes("unknown")) return "unknown";
+  return "yes";
+}
+
+function clusterPreset(tone: ClusterTone): string {
+  if (tone === "no") return "islands#invertedRedClusterIcons";
+  if (tone === "queue") return "islands#invertedYellowClusterIcons";
+  if (tone === "low") return "islands#invertedDarkOrangeClusterIcons";
+  if (tone === "unknown") return "islands#invertedGrayClusterIcons";
+  return "islands#invertedDarkGreenClusterIcons";
+}
+
+function clusterHint(tone: ClusterTone, count: number): string {
+  const message = tone === "no"
+    ? "есть АЗС без топлива"
+    : tone === "queue"
+      ? "есть АЗС с очередью"
+      : tone === "low"
+        ? "на части АЗС мало топлива"
+        : tone === "unknown"
+          ? "по части АЗС нет данных"
+          : "на всех АЗС топливо есть";
+  return `${count} АЗС · ${message}`;
 }
