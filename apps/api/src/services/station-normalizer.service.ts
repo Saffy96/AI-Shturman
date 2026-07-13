@@ -90,7 +90,7 @@ export function normalizeStationDetails(
       authorReliable: report.author_reliable === true,
       onSite: report.on_site === true
     })),
-    sourceLabel: "Данные водителей ГдеБЕНЗ"
+    sourceLabel: "Данные водителей"
   };
 }
 

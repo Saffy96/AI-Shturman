@@ -29,7 +29,7 @@ export interface NormalizedStationDetails {
   cvt: number | string | null;
   detail: string | null;
   recentReports: StationRecentReport[];
-  sourceLabel: "Данные водителей ГдеБЕНЗ";
+  sourceLabel: "Данные водителей";
 }
 export interface StationStopCost { deviationKm: number; extraTimeMin: number; fuelLiters: number; fuelPriceRub: number | null; totalRub: number | null; }
 
