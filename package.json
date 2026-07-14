@@ -16,7 +16,7 @@
     "start": "npm run start:api",
     "start:api": "npm run start -w @ai-shturman/api",
     "lint": "tsc -b --pretty false && npm run lint -w @ai-shturman/web",
-    "test": "npm run build && node --test packages/shared/test/navigator-advice.test.mjs packages/shared/test/normalization.test.mjs packages/shared/test/route-geometry.test.mjs apps/api/test/station-details.test.mjs"
+    "test": "npm run build && node --test packages/shared/test/navigator-advice.test.mjs packages/shared/test/normalization.test.mjs packages/shared/test/route-geometry.test.mjs apps/api/test/station-details.test.mjs apps/api/test/ttl-cache.test.mjs"
   },
   "devDependencies": {
     "@types/cors": "^2.8.19",

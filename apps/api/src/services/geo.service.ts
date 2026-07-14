@@ -2,7 +2,7 @@ import type { GeoSearchResponse, GeoSearchResult } from "@ai-shturman/shared";
 import { TtlCache } from "../utils/ttl-cache.js";
 import { geocode as yandexGeocode, reverseGeocode as yandexReverseGeocode } from "./yandex.service.js";
 
-const cache = new TtlCache<GeoSearchResult[]>(24 * 60 * 60 * 1000);
+const cache = new TtlCache<GeoSearchResult[]>(24 * 60 * 60 * 1000, 1_000);
 
 export async function searchGeo(query: string): Promise<GeoSearchResponse> {
   const normalized = query.trim();

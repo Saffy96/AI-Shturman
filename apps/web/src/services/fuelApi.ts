@@ -10,7 +10,9 @@ import type {
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:4000";
 const REQUEST_TIMEOUT_MS = 12_000;
-const stationDetailsCache = new Map<string, StationDetailsResponse>();
+const STATION_DETAILS_TTL_MS = 90_000;
+const MAX_STATION_DETAILS_CACHE_ENTRIES = 100;
+const stationDetailsCache = new Map<string, { expiresAt: number; value: StationDetailsResponse }>();
 const stationDetailsRequests = new Map<string, Promise<StationDetailsResponse>>();
 
 export type FuelApiErrorKind =
@@ -31,17 +33,17 @@ export class FuelApiError extends Error {
   }
 }
 
-export async function fetchNearbyFuel(params: NearbyFuelParams): Promise<NearbyFuelResponse> {
+export async function fetchNearbyFuel(params: NearbyFuelParams, signal?: AbortSignal): Promise<NearbyFuelResponse> {
   const url = new URL("/api/fuel/nearby", API_BASE_URL);
   url.searchParams.set("lat", String(params.lat));
   url.searchParams.set("lon", String(params.lon));
   url.searchParams.set("radiusKm", String(params.radiusKm));
   url.searchParams.set("fuel", params.fuel);
 
-  return requestJson<NearbyFuelResponse>(url);
+  return requestJson<NearbyFuelResponse>(url, signal);
 }
 
-export async function fetchRouteFuel(params: RouteFuelParams): Promise<RouteFuelResponse> {
+export async function fetchRouteFuel(params: RouteFuelParams, signal?: AbortSignal): Promise<RouteFuelResponse> {
   const endpoint = params.mode === "approx" ? "/api/fuel/route" : "/api/fuel/route-real";
   const url = new URL(endpoint, API_BASE_URL);
   url.searchParams.set("from", params.from);
@@ -61,7 +63,7 @@ export async function fetchRouteFuel(params: RouteFuelParams): Promise<RouteFuel
     url.searchParams.set("toLon", String(params.toLon));
   }
 
-  return requestJson<RouteFuelResponse>(url);
+  return requestJson<RouteFuelResponse>(url, signal);
 }
 
 export async function searchGeo(query: string): Promise<GeoSearchResponse> {
@@ -73,7 +75,7 @@ export async function searchGeo(query: string): Promise<GeoSearchResponse> {
 
 export async function fetchStationDetails(osmId: string, forceRefresh = false): Promise<StationDetailsResponse> {
   if (!forceRefresh) {
-    const cached = stationDetailsCache.get(osmId);
+    const cached = readStationDetailsCache(osmId);
     if (cached) return cached;
     const pending = stationDetailsRequests.get(osmId);
     if (pending) return pending;
@@ -83,7 +85,7 @@ export async function fetchStationDetails(osmId: string, forceRefresh = false): 
   if (forceRefresh) url.searchParams.set("refresh", "1");
   const request = requestJson<StationDetailsResponse>(url)
     .then((response) => {
-      stationDetailsCache.set(osmId, response);
+      writeStationDetailsCache(osmId, response);
       return response;
     })
     .finally(() => stationDetailsRequests.delete(osmId));
@@ -99,8 +101,11 @@ export async function reverseGeo(lat: number, lon: number): Promise<GeoSearchRes
   return payload.result;
 }
 
-async function requestJson<T extends { ok: true }>(url: URL): Promise<T> {
+async function requestJson<T extends { ok: true }>(url: URL, externalSignal?: AbortSignal): Promise<T> {
   const controller = new AbortController();
+  const abortFromExternalSignal = () => controller.abort();
+  if (externalSignal?.aborted) controller.abort();
+  else externalSignal?.addEventListener("abort", abortFromExternalSignal, { once: true });
   const timeoutId = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
   try {
@@ -145,6 +150,29 @@ async function requestJson<T extends { ok: true }>(url: URL): Promise<T> {
     throw new FuelApiError("Backend unavailable", "backend-unavailable");
   } finally {
     window.clearTimeout(timeoutId);
+    externalSignal?.removeEventListener("abort", abortFromExternalSignal);
+  }
+}
+
+function readStationDetailsCache(osmId: string): StationDetailsResponse | null {
+  const entry = stationDetailsCache.get(osmId);
+  if (!entry) return null;
+  if (entry.expiresAt <= Date.now()) {
+    stationDetailsCache.delete(osmId);
+    return null;
+  }
+  stationDetailsCache.delete(osmId);
+  stationDetailsCache.set(osmId, entry);
+  return entry.value;
+}
+
+function writeStationDetailsCache(osmId: string, value: StationDetailsResponse): void {
+  stationDetailsCache.delete(osmId);
+  stationDetailsCache.set(osmId, { expiresAt: Date.now() + STATION_DETAILS_TTL_MS, value });
+  while (stationDetailsCache.size > MAX_STATION_DETAILS_CACHE_ENTRIES) {
+    const oldestKey = stationDetailsCache.keys().next().value as string | undefined;
+    if (oldestKey == null) break;
+    stationDetailsCache.delete(oldestKey);
   }
 }
 

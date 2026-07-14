@@ -41,6 +41,7 @@ export function useNavigatorController() {
   const [isFiltersOpen, setIsFiltersOpen] = useState(false);
   const [isNearbyMapPickerOpen, setIsNearbyMapPickerOpen] = useState(false);
   const requestVersionRef = useRef(0);
+  const activeRequestRef = useRef<AbortController | null>(null);
 
   const geolocation = useGeolocation();
   const isOnline = useNetworkStatus();
@@ -61,7 +62,26 @@ export function useNavigatorController() {
     }
   }, [filteredStations, selectedStation]);
 
+  const abortActiveRequest = useCallback(() => {
+    activeRequestRef.current?.abort();
+    activeRequestRef.current = null;
+  }, []);
+
+  const beginRequest = useCallback(() => {
+    abortActiveRequest();
+    const controller = new AbortController();
+    activeRequestRef.current = controller;
+    return controller;
+  }, [abortActiveRequest]);
+
+  const finishRequest = useCallback((controller: AbortController) => {
+    if (activeRequestRef.current === controller) activeRequestRef.current = null;
+  }, []);
+
+  useEffect(() => abortActiveRequest, [abortActiveRequest]);
+
   const clearResults = useCallback(() => {
+    abortActiveRequest();
     requestVersionRef.current += 1;
     setData(null);
     setRouteWarning(null);
@@ -70,7 +90,7 @@ export function useNavigatorController() {
     setIsLoading(false);
     setIsBuildingRoute(false);
     setLoadingPhase(null);
-  }, []);
+  }, [abortActiveRequest]);
 
   const applyLocation = useCallback((coords: Coordinates, source: LocationSource) => {
     setSelectedLocation({ coords, source });
@@ -97,6 +117,8 @@ export function useNavigatorController() {
   }, [clearResults, setSelectedMode]);
 
   const resetRoute = useCallback(() => {
+    abortActiveRequest();
+    requestVersionRef.current += 1;
     setRoutePoints(null);
     setRouteWarning(null);
     setRouteFallbackHint(null);
@@ -104,7 +126,7 @@ export function useNavigatorController() {
       setData(null);
       setSelectedStation(null);
     }
-  }, [selectedMode]);
+  }, [abortActiveRequest, selectedMode]);
 
   const handleFromChange = useCallback((value: RouteLocation) => { setFromPoint(value); resetRoute(); }, [resetRoute, setFromPoint]);
   const handleToChange = useCallback((value: RouteLocation) => { setToPoint(value); resetRoute(); }, [resetRoute, setToPoint]);
@@ -118,6 +140,7 @@ export function useNavigatorController() {
   const buildRoute = useCallback(async () => {
     if (isBuildingRoute || !fromPoint || !toPoint) return;
     const requestVersion = ++requestVersionRef.current;
+    const requestController = beginRequest();
     setError(null);
     setRouteFallbackHint(null);
     setLoadingPhase("route");
@@ -125,7 +148,7 @@ export function useNavigatorController() {
     const points = { from: fromPoint, to: toPoint };
     setRoutePoints(points);
     try {
-      const response = await fetchRouteFuel({ from: fromPoint.text, to: toPoint.text, corridorKm, fuel, mode: "real", fromLat: fromPoint.lat, fromLon: fromPoint.lon, toLat: toPoint.lat, toLon: toPoint.lon });
+      const response = await fetchRouteFuel({ from: fromPoint.text, to: toPoint.text, corridorKm, fuel, mode: "real", fromLat: fromPoint.lat, fromLon: fromPoint.lon, toLat: toPoint.lat, toLon: toPoint.lon }, requestController.signal);
       if (requestVersion !== requestVersionRef.current) return;
       setData(response);
       setRoutePoints({ from: response.from, to: response.to });
@@ -136,12 +159,13 @@ export function useNavigatorController() {
       if (shouldOfferApproximateFallback(requestError)) setRouteFallbackHint("Можно продолжить в приблизительном режиме по коридору маршрута.");
       setError(getReadableError(requestError, isOnline));
     } finally {
+      finishRequest(requestController);
       if (requestVersion === requestVersionRef.current) {
         setIsBuildingRoute(false);
         setLoadingPhase(null);
       }
     }
-  }, [corridorKm, fromPoint, fuel, isBuildingRoute, isOnline, toPoint]);
+  }, [beginRequest, corridorKm, finishRequest, fromPoint, fuel, isBuildingRoute, isOnline, toPoint]);
 
   const runFuelCheck = useCallback(async (requestMode: RouteRequestMode) => {
     if (isLoading || isBuildingRoute) return;
@@ -149,17 +173,18 @@ export function useNavigatorController() {
     if (!isOnline) { setError("Нет интернета. Проверьте связь и попробуйте снова."); return; }
     if (!canRequestStations) { setError(isRouteMode ? "Сначала постройте маршрут." : "Сначала выберите местоположение."); return; }
     const requestVersion = ++requestVersionRef.current;
+    const requestController = beginRequest();
     setIsLoading(true);
     setLoadingPhase("stations");
     try {
       if (isRouteMode && routePoints) {
-        const response = await fetchRouteFuel({ from: fromPoint?.text ?? routePoints.from.name, to: toPoint?.text ?? routePoints.to.name, corridorKm, fuel, mode: requestMode, fromLat: routePoints.from.lat, fromLon: routePoints.from.lon, toLat: routePoints.to.lat, toLon: routePoints.to.lon });
+        const response = await fetchRouteFuel({ from: fromPoint?.text ?? routePoints.from.name, to: toPoint?.text ?? routePoints.to.name, corridorKm, fuel, mode: requestMode, fromLat: routePoints.from.lat, fromLon: routePoints.from.lon, toLat: routePoints.to.lat, toLon: routePoints.to.lon }, requestController.signal);
         if (requestVersion !== requestVersionRef.current) return;
         setData(response);
         setRoutePoints({ from: response.from, to: response.to });
         setRouteWarning(response.warning ?? null);
       } else if (selectedLocation) {
-        const response = await fetchNearbyFuel({ ...selectedLocation.coords, radiusKm, fuel });
+        const response = await fetchNearbyFuel({ ...selectedLocation.coords, radiusKm, fuel }, requestController.signal);
         if (requestVersion !== requestVersionRef.current) return;
         setData(response);
         setRouteWarning(null);
@@ -171,12 +196,13 @@ export function useNavigatorController() {
       if (isRouteMode && requestMode === "real" && shouldOfferApproximateFallback(requestError)) setRouteFallbackHint("Можно продолжить в приблизительном режиме по коридору маршрута.");
       setError(getReadableError(requestError, isOnline));
     } finally {
+      finishRequest(requestController);
       if (requestVersion === requestVersionRef.current) {
         setIsLoading(false);
         setLoadingPhase(null);
       }
     }
-  }, [canRequestStations, corridorKm, fromPoint?.text, fuel, isBuildingRoute, isLoading, isOnline, isRouteMode, radiusKm, routePoints, selectedLocation, toPoint?.text]);
+  }, [beginRequest, canRequestStations, corridorKm, finishRequest, fromPoint?.text, fuel, isBuildingRoute, isLoading, isOnline, isRouteMode, radiusKm, routePoints, selectedLocation, toPoint?.text]);
 
   const selectStation = useCallback((station: FuelStation, focus = false) => {
     setSelectedStation(station);

@@ -1,4 +1,4 @@
-const CACHE_NAME = "ai-shturman-shell-v2";
+const CACHE_NAME = "ai-shturman-shell-v3";
 const SHELL_ASSETS = [
   "/",
   "/manifest.webmanifest",
@@ -37,6 +37,12 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
+  // Live fuel, route and station data must never be served from the static
+  // application cache when the API is hosted on the same origin.
+  if (url.pathname.startsWith("/api/")) {
+    return;
+  }
+
   if (event.request.mode === "navigate") {
     event.respondWith(fetch(event.request).catch(() => caches.match("/")));
     return;
@@ -49,8 +55,10 @@ self.addEventListener("fetch", (event) => {
       }
 
       return fetch(event.request).then((response) => {
-        const copy = response.clone();
-        caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
+        if (response.ok && response.type === "basic") {
+          const copy = response.clone();
+          void caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
+        }
         return response;
       });
     })

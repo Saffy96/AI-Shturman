@@ -31,8 +31,11 @@ interface Props {
 }
 
 const defaultCenter = [55.796127, 49.106414] as [number, number];
+const yandexMapsQuery = { apikey: import.meta.env.VITE_YANDEX_MAPS_API_KEY ?? "", lang: "ru_RU", load: "package.full" } as const;
+const routeLineOptions = { strokeColor: "#00c9a7", strokeWidth: 6, strokeOpacity: 0.9 };
+const configuredClusterers = new WeakSet<object>();
 
-export function Map({ from, to, location, route = [], stations, zoom, selectedStation, stationFocusVersion = 0, onZoomChange, onStationClick }: Props) {
+export const Map = memo(function Map({ from, to, location, route = [], stations, zoom, selectedStation, stationFocusVersion = 0, onZoomChange, onStationClick }: Props) {
   const mapRef = useRef<any>(null);
   const programmaticMoveRef = useRef(false);
   const interactionTimerRef = useRef<number | null>(null);
@@ -41,12 +44,22 @@ export function Map({ from, to, location, route = [], stations, zoom, selectedSt
   const [interactionMode, setInteractionMode] = useState<MapInteractionMode>("automatic");
   const [currentZoom, setCurrentZoom] = useState(zoom);
   const [mapReady, setMapReady] = useState(false);
+  const compactMarkers = currentZoom < 11;
+  const coarseClusters = currentZoom < 10;
 
   const routeBounds = useMemo(() => {
     const points = route.length > 1 ? route : [from, to].filter(Boolean) as Coordinates[];
     return boundsFor(points);
   }, [from?.lat, from?.lon, to?.lat, to?.lon, route]);
   const routeKey = `${from?.lat ?? ""}:${from?.lon ?? ""}:${to?.lat ?? ""}:${to?.lon ?? ""}:${route.length}`;
+  const routeGeometry = useMemo(() => route.map((point) => [point.lat, point.lon]), [route]);
+  const clusterOptions = useMemo(() => ({
+    preset: "islands#invertedGrayClusterIcons",
+    groupByCoordinates: false,
+    gridSize: coarseClusters ? 96 : 64,
+    clusterDisableClickZoom: false,
+    clusterOpenBalloonOnClick: false
+  }), [coarseClusters]);
 
   const runProgrammaticMove = useCallback((move: () => void) => {
     programmaticMoveRef.current = true;
@@ -118,8 +131,14 @@ export function Map({ from, to, location, route = [], stations, zoom, selectedSt
     interactionTimerRef.current = window.setTimeout(() => onZoomChange(nextZoom), 150);
   }, [onZoomChange]);
 
+  const handleMapInstance = useCallback((value: any) => {
+    mapRef.current = value;
+    setMapReady((ready) => ready === Boolean(value) ? ready : Boolean(value));
+  }, []);
+
   const configureClusterer = useCallback((clusterer: YandexClustererLike | null) => {
-    if (!clusterer) return;
+    if (!clusterer || configuredClusterers.has(clusterer)) return;
+    configuredClusterers.add(clusterer);
     const createCluster = clusterer.createCluster.bind(clusterer);
     clusterer.createCluster = (center, geoObjects) => {
       const cluster = createCluster(center, geoObjects);
@@ -132,25 +151,25 @@ export function Map({ from, to, location, route = [], stations, zoom, selectedSt
 
   const markers = useMemo(() => stations.map((station) => {
     const selected = selectedStation?.id === station.id;
-    return <StationMarker key={station.id} station={station} selected={selected} compact={currentZoom < 11} onClick={onStationClick} />;
-  }), [currentZoom, onStationClick, selectedStation?.id, stations]);
+    return <StationMarker key={station.id} station={station} selected={selected} compact={compactMarkers} onClick={onStationClick} />;
+  }), [compactMarkers, onStationClick, selectedStation?.id, stations]);
   const clusterStatusKey = useMemo(() => stations.map((station) => `${station.id}:${stationClusterTone(station)}`).join("|"), [stations]);
 
   return <section className="relative h-full w-full overflow-hidden bg-[#05070b]" aria-label="Карта АЗС">
-    <YMaps query={{ apikey: import.meta.env.VITE_YANDEX_MAPS_API_KEY ?? "", lang: "ru_RU", load: "package.full" }}>
+    <YMaps query={yandexMapsQuery}>
       <YandexMap
-        instanceRef={(value) => { mapRef.current = value; setMapReady(Boolean(value)); }}
+        instanceRef={handleMapInstance}
         defaultState={{ center: location ? [location.lat, location.lon] : from ? [from.lat, from.lon] : defaultCenter, zoom }}
         width="100%"
         height="100%"
         onActionBegin={handleActionBegin}
         onBoundsChange={handleBoundsChange}
       >
-        {route.length > 1 ? <Polyline geometry={route.map((point) => [point.lat, point.lon])} options={{ strokeColor: "#00c9a7", strokeWidth: 6, strokeOpacity: 0.9 }} /> : null}
+        {route.length > 1 ? <Polyline geometry={routeGeometry} options={routeLineOptions} /> : null}
         {from ? <Placemark geometry={[from.lat, from.lon]} properties={{ iconCaption: `A · ${from.name}`, balloonContent: from.address }} options={{ preset: "islands#darkGreenCircleDotIcon" }} /> : null}
         {to ? <Placemark geometry={[to.lat, to.lon]} properties={{ iconCaption: `Б · ${to.name}`, balloonContent: to.address }} options={{ preset: "islands#redCircleDotIcon" }} /> : null}
         {location ? <Placemark geometry={[location.lat, location.lon]} properties={{ iconCaption: "Вы здесь" }} options={{ preset: "islands#blueCircleDotIcon", zIndex: 900 }} /> : null}
-        <Clusterer key={clusterStatusKey} instanceRef={configureClusterer} options={{ preset: "islands#invertedGrayClusterIcons", groupByCoordinates: false, gridSize: currentZoom < 10 ? 96 : 64, clusterDisableClickZoom: false, clusterOpenBalloonOnClick: false }}>
+        <Clusterer key={clusterStatusKey} instanceRef={configureClusterer} options={clusterOptions}>
           {markers}
         </Clusterer>
       </YandexMap>
@@ -164,7 +183,7 @@ export function Map({ from, to, location, route = [], stations, zoom, selectedSt
       <MapButton label="Отдалить" onClick={() => changeZoom(-1)}><Minus size={20} /></MapButton>
     </div>
   </section>;
-}
+});
 
 const StationMarker = memo(function StationMarker({ station, selected, compact, onClick }: { station: FuelStation; selected: boolean; compact: boolean; onClick?: (station: FuelStation) => void }) {
   const visual = stationVisual(station);

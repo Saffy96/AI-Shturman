@@ -1,14 +1,6 @@
 import {
   buildRouteBBox,
-  getFreshnessLabel,
-  getQueueLabel,
-  getRecommendation,
-  getStatusLabel,
-  hasRequestedFuel,
-  detailMentionsQueue,
   haversineDistanceKm,
-  normalizeStationStatus,
-  parseFuels,
   projectPointOnRoute,
   simplifyRoute,
   toNumberOrNull,
@@ -30,7 +22,6 @@ import {
   type GdebenzNearbyResponse,
   type GdebenzRecentResponseRaw,
   type GdebenzStationDetailsRaw,
-  type GdebenzStationRaw
 } from "@ai-shturman/gdebenz-client";
 import { env } from "../config/env.js";
 import { TtlCache } from "../utils/ttl-cache.js";
@@ -69,17 +60,15 @@ interface ChunkFetchResult {
   warnings: string[];
 }
 
-interface StationRouteMetrics {
-  distanceFromRouteKm?: number | null;
-  distanceFromStartKm?: number | null;
-  routePositionLabel?: string | null;
-}
-
-const nearbyCache = new TtlCache<GdebenzNearbyResponse>(env.cacheTtlMs);
-const bboxCache = new TtlCache<GdebenzBBoxStationRaw[]>(env.cacheTtlMs);
-const detailsCache = new TtlCache<GdebenzStationDetailsRaw>(90_000);
-const recentCache = new TtlCache<GdebenzRecentResponseRaw>(90_000);
-const stationAddressCache = new TtlCache<string>(7 * 24 * 60 * 60 * 1000);
+const nearbyCache = new TtlCache<GdebenzNearbyResponse>(env.cacheTtlMs, 250);
+const bboxCache = new TtlCache<GdebenzBBoxStationRaw[]>(env.cacheTtlMs, 500);
+const detailsCache = new TtlCache<GdebenzStationDetailsRaw>(90_000, 1_000);
+const recentCache = new TtlCache<GdebenzRecentResponseRaw>(90_000, 1_000);
+const stationAddressCache = new TtlCache<string>(7 * 24 * 60 * 60 * 1000, 10_000);
+const nearbyRequests = new Map<string, Promise<GdebenzNearbyResponse>>();
+const bboxRequests = new Map<string, Promise<GdebenzBBoxStationRaw[]>>();
+const detailsRequests = new Map<string, Promise<GdebenzStationDetailsRaw>>();
+const recentRequests = new Map<string, Promise<GdebenzRecentResponseRaw>>();
 const MAX_ROUTE_CHUNKS = 20;
 const MAX_GDEBENZ_ROUTE_REQUESTS = 24;
 const MAX_CHUNK_SPLIT_DEPTH = 2;
@@ -138,14 +127,16 @@ async function getCachedStationDetails(osmId: number | string, forceRefresh: boo
     const cached = detailsCache.get(key);
     if (cached) return cached;
   }
-  try {
-    const value = await retryGdebenzRequest(() => getStationDetails(osmId, GDEBENZ_DETAILS_FINGERPRINT, gdebenzOptions()));
-    detailsCache.set(key, value);
-    return value;
-  } catch (error) {
-    if (stale) return stale;
-    throw error;
-  }
+  return coalesceRequest(detailsRequests, key, async () => {
+    try {
+      const value = await retryGdebenzRequest(() => getStationDetails(osmId, GDEBENZ_DETAILS_FINGERPRINT, gdebenzOptions()));
+      detailsCache.set(key, value);
+      return value;
+    } catch (error) {
+      if (stale) return stale;
+      throw error;
+    }
+  });
 }
 
 async function getCachedStationRecent(osmId: number | string, forceRefresh: boolean): Promise<GdebenzRecentResponseRaw> {
@@ -155,14 +146,16 @@ async function getCachedStationRecent(osmId: number | string, forceRefresh: bool
     const cached = recentCache.get(key);
     if (cached) return cached;
   }
-  try {
-    const value = await retryGdebenzRequest(() => getStationRecent(osmId, 30, GDEBENZ_DETAILS_FINGERPRINT, gdebenzOptions()));
-    recentCache.set(key, value);
-    return value;
-  } catch (error) {
-    if (stale) return stale;
-    throw error;
-  }
+  return coalesceRequest(recentRequests, key, async () => {
+    try {
+      const value = await retryGdebenzRequest(() => getStationRecent(osmId, 30, GDEBENZ_DETAILS_FINGERPRINT, gdebenzOptions()));
+      recentCache.set(key, value);
+      return value;
+    } catch (error) {
+      if (stale) return stale;
+      throw error;
+    }
+  });
 }
 
 async function retryGdebenzRequest<T>(request: () => Promise<T>): Promise<T> {
@@ -337,20 +330,21 @@ async function getCachedNearbyStations(params: NearbyFuelParams): Promise<Gdeben
     return cached;
   }
 
-  const response = await getNearbyStations(
-    {
-      lat: params.lat,
-      lon: params.lon,
-      radiusKm: params.radiusKm
-    },
-    {
-      baseUrl: env.gdebenzBaseUrl,
-      timeoutMs: env.gdebenzTimeoutMs
-    }
-  );
-
-  nearbyCache.set(cacheKey, response);
-  return response;
+  return coalesceRequest(nearbyRequests, cacheKey, async () => {
+    const response = await getNearbyStations(
+      {
+        lat: params.lat,
+        lon: params.lon,
+        radiusKm: params.radiusKm
+      },
+      {
+        baseUrl: env.gdebenzBaseUrl,
+        timeoutMs: env.gdebenzTimeoutMs
+      }
+    );
+    nearbyCache.set(cacheKey, response);
+    return response;
+  });
 }
 
 async function getCachedBBoxStations(params: {
@@ -366,13 +360,28 @@ async function getCachedBBoxStations(params: {
     return cached;
   }
 
-  const response = await getStationsByBBox(params, {
-    baseUrl: env.gdebenzBaseUrl,
-    timeoutMs: env.gdebenzTimeoutMs
+  return coalesceRequest(bboxRequests, cacheKey, async () => {
+    const response = await getStationsByBBox(params, {
+      baseUrl: env.gdebenzBaseUrl,
+      timeoutMs: env.gdebenzTimeoutMs
+    });
+    bboxCache.set(cacheKey, response);
+    return response;
   });
+}
 
-  bboxCache.set(cacheKey, response);
-  return response;
+function coalesceRequest<T>(requests: Map<string, Promise<T>>, key: string, load: () => Promise<T>): Promise<T> {
+  const existing = requests.get(key);
+  if (existing) return existing;
+  const pending = (async () => {
+    try {
+      return await load();
+    } finally {
+      requests.delete(key);
+    }
+  })();
+  requests.set(key, pending);
+  return pending;
 }
 
 async function fetchApproximateRouteStations(
@@ -472,67 +481,6 @@ async function fetchGeometryChunkStations(
     const message = error instanceof GdebenzClientError || error instanceof Error ? error.message : "unknown error";
     return { chunksProcessed: 1, rawStations: [], warnings: [`Часть маршрута пропущена: сегмент ${chunkIndex} не загрузился (${warningPrefix}: ${message}).`] };
   }
-}
-
-function normalizeStation(
-  raw: GdebenzStationRaw | GdebenzBBoxStationRaw,
-  requestedFuel: string,
-  fallbackDistanceKm?: number | null,
-  routeMetrics?: StationRouteMetrics
-): NormalizedFuelStation | null {
-  const coordinates = toCoordinates(raw);
-
-  if (!coordinates) {
-    return null;
-  }
-
-  const status = normalizeStationStatus(raw.status);
-  const detail = getStringField(raw, "detail");
-  const fuels = parseFuels(raw.fuels_now, detail);
-  const hasFuel = hasRequestedFuel(fuels, requestedFuel);
-  const lastUpdatedAt = getStringField(raw, "last_at");
-  const freshnessLabel = getFreshnessLabel(lastUpdatedAt);
-  const hasQueue = raw.conflict === "queue" || detailMentionsQueue(detail);
-
-  return {
-    id: `osm:${raw.osm_id}`,
-    source: "gdebenz",
-    sources: ["gdebenz", "osm"],
-    brand: normalizeString(raw.brand),
-    name: normalizeString(raw.name),
-    address: normalizeString(raw.addr),
-    lat: coordinates.lat,
-    lon: coordinates.lon,
-    distanceKm: toNumberOrNull(getUnknownField(raw, "distance_km")) ?? fallbackDistanceKm ?? null,
-    status,
-    statusLabel: getStatusLabel(status),
-    fuels,
-    prices: null,
-    hasRequestedFuel: hasFuel,
-    hasQueue,
-    queue: { present: hasQueue, vehicleRange: null, confirmations: null, estimatedMinutes: hasQueue ? 5 : 0 },
-    queueLabel: hasQueue ? "Есть очередь" : getQueueLabel(raw.conflict),
-    confidence: toNumberOrNull(getUnknownField(raw, "confidence_base")),
-    confirmations: toNumberOrNull(getUnknownField(raw, "confirmations")),
-    reports: Math.max(0, Math.round(toNumberOrNull(getUnknownField(raw, "confirmations")) ?? 0)),
-    lastUpdatedAt,
-    freshnessLabel,
-    freshness: 0,
-    reliability: 0,
-    reliabilityLabel: "low",
-    rating: 0,
-    stopCost: { deviationKm: routeMetrics?.distanceFromRouteKm ?? 0, extraTimeMin: 0, fuelLiters: 0, fuelPriceRub: null, totalRub: null },
-    recommendation: getRecommendation({
-      status,
-      hasRequestedFuel: hasFuel,
-      hasQueue,
-      freshnessLabel
-    }),
-    rawDetail: normalizeString(detail),
-    distanceFromRouteKm: routeMetrics?.distanceFromRouteKm ?? null,
-    distanceFromStartKm: routeMetrics?.distanceFromStartKm ?? null,
-    routePositionLabel: routeMetrics?.routePositionLabel ?? null
-  };
 }
 
 function buildSummary(stations: NormalizedFuelStation[]): FuelSummary {
@@ -701,24 +649,6 @@ function toCoordinates(value: { lat: unknown; lon: unknown }): Coordinates | nul
   }
 
   return { lat, lon };
-}
-
-function normalizeString(value: unknown): string | null {
-  if (typeof value !== "string") {
-    return null;
-  }
-
-  const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : null;
-}
-
-function getStringField(raw: Record<string, unknown>, key: string): string | null {
-  const value = raw[key];
-  return typeof value === "string" ? value : null;
-}
-
-function getUnknownField(raw: Record<string, unknown>, key: string): unknown {
-  return raw[key];
 }
 
 function dedupeStations(stations: GdebenzBBoxStationRaw[]): GdebenzBBoxStationRaw[] {
