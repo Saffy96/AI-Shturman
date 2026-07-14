@@ -55,6 +55,15 @@ export function normalizeStationDetails(
   const queuePresent = status === "queue" || limits?.q === "yes"
     || (isRecord(raw.freshConflict) && raw.freshConflict.status === "queue");
   const confidenceBase = toNumberOrNull(raw.confidenceBase);
+  const structuredLimitLiters = positiveNumberOrNull(limits?.lim);
+  const limitConfirmations = positiveNumberOrNull(limits?.limCnt);
+  const currentDetailLimitLiters = findLimitLiters(raw.detail, []);
+  const limitActive = structuredLimitLiters != null
+    || currentDetailLimitLiters != null
+    || limitConfirmations != null;
+  const limitLiters = limitActive
+    ? structuredLimitLiters ?? currentDetailLimitLiters ?? findLimitLiters(null, recent)
+    : null;
 
   return {
     id: `osm:${osmId}`,
@@ -77,9 +86,9 @@ export function normalizeStationDetails(
       estimatedMinutes: null
     },
     limit: {
-      active: raw.limited === true,
-      liters: toNumberOrNull(limits?.lim) ?? findLimitLiters(raw.detail, recent),
-      confirmations: toNumberOrNull(limits?.limCnt)
+      active: limitActive,
+      liters: limitLiters,
+      confirmations: limitConfirmations
     },
     prices: normalizeDetailsPrices(raw.pricesNow),
     address: stringValue(raw.addr),
@@ -312,6 +321,11 @@ function findLimitLiters(detail: string | null | undefined, recent: GdebenzRecen
     if (Number.isFinite(liters) && liters > 0) return liters;
   }
   return null;
+}
+
+function positiveNumberOrNull(value: unknown): number | null {
+  const number = toNumberOrNull(value);
+  return number != null && number > 0 ? number : null;
 }
 
 export function calculateStationRating(input: { selectedFuel: boolean; status: NormalizedFuelStation["status"]; freshness: number; reliability: number; deviationKm: number | null; hasQueue: boolean }): number {

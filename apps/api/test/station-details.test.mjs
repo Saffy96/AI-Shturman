@@ -70,11 +70,21 @@ test("object-shaped fresh queue conflict from the real API is preserved", () => 
 test("limit liters are recovered from a recent driver report", () => {
   const station = normalizeStationDetails(
     "1005",
-    { status: "low", limited: true, limits: { lim: null } },
+    { status: "low", limited: true, limits: { lim: null, limCnt: 1 } },
     [{ status: "low", detail: "Отпускают с лимитом до 25 л", created_at: "2026-07-13T10:00:00Z" }]
   );
   assert.equal(station.limit.active, true);
   assert.equal(station.limit.liters, 25);
+  assert.equal(station.limit.confirmations, 1);
+});
+
+test("limited flag without current evidence does not create a phantom limit", () => {
+  const station = normalizeStationDetails(
+    "1006",
+    { status: "yes", limited: true, limits: { lim: null, limCnt: 0 } },
+    [{ status: "low", detail: "Лимит 30 л", created_at: "2026-07-12T10:00:00Z" }]
+  );
+  assert.deepEqual(station.limit, { active: false, liters: null, confirmations: null });
 });
 
 test("activity timestamps support ISO, Unix seconds and Unix milliseconds", () => {
