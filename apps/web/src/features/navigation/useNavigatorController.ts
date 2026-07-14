@@ -12,7 +12,7 @@ type FuelResponse = NearbyFuelResponse | RouteFuelResponse;
 type RouteRequestMode = "real" | "approx";
 export type LoadingPhase = "route" | "stations" | null;
 
-interface SelectedLocation { coords: Coordinates; source: LocationSource; }
+interface SelectedLocation { coords: Coordinates; source: LocationSource; label?: string; }
 export interface RoutePoints { from: GeoSearchResult; to: GeoSearchResult; }
 
 const EMPTY_STATIONS: FuelStation[] = [];
@@ -53,7 +53,7 @@ export function useNavigatorController() {
     : responseStations, [corridorKm, responseStations, routeData?.mode]);
   const filteredStations = useMemo(() => filterStations(allStations, filters, fuel), [allStations, filters, fuel]);
   const canRequestStations = isRouteMode ? Boolean(routePoints) : Boolean(selectedLocation);
-  const locationLabel = selectedLocation ? `${selectedLocation.coords.lat.toFixed(6)}, ${selectedLocation.coords.lon.toFixed(6)}` : "Геопозиция не получена";
+  const locationLabel = selectedLocation ? selectedLocation.label ?? `${selectedLocation.coords.lat.toFixed(6)}, ${selectedLocation.coords.lon.toFixed(6)}` : "Геопозиция не получена";
   const sourceLabel = selectedLocation ? LOCATION_SOURCE_LABELS[selectedLocation.source] : "Не выбран";
 
   useEffect(() => {
@@ -92,8 +92,8 @@ export function useNavigatorController() {
     setLoadingPhase(null);
   }, [abortActiveRequest]);
 
-  const applyLocation = useCallback((coords: Coordinates, source: LocationSource) => {
-    setSelectedLocation({ coords, source });
+  const applyLocation = useCallback((coords: Coordinates, source: LocationSource, label?: string) => {
+    setSelectedLocation({ coords, source, ...(label ? { label } : {}) });
     clearResults();
   }, [clearResults]);
 
@@ -224,7 +224,7 @@ export function useNavigatorController() {
     applyLocation, requestLocation, handleModeChange, handleFromChange, handleToChange, handleSwapRoute, buildRoute,
     checkStations: () => runFuelCheck("real"), useApproximateRoute: () => runFuelCheck("approx"),
     refresh: () => runFuelCheck(routeData?.mode === "route_bbox" ? "approx" : "real"),
-    selectStation, closeStation, cancelRoute, useKazan: () => applyLocation(KAZAN_LOCATION, "kazan")
+    selectStation, closeStation, cancelRoute, useKazan: () => applyLocation(KAZAN_LOCATION, "kazan", "Казань")
   };
 }
 

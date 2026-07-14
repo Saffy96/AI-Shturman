@@ -21,6 +21,6 @@ export type LocationSource = "browser" | "kazan" | "manual" | "map";
 export const LOCATION_SOURCE_LABELS: Record<LocationSource, string> = {
   browser: "GPS / браузер",
   kazan: "Казань по умолчанию",
-  manual: "Введено вручную",
+  manual: "Адрес введён вручную",
   map: "Выбрано на карте"
 };

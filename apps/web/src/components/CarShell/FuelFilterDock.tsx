@@ -1,4 +1,4 @@
-import { Filter, RefreshCw, Search, SlidersHorizontal, X } from "lucide-react";
+import { Check, Filter, RefreshCw, Search, SlidersHorizontal, X } from "lucide-react";
 import { useEffect } from "react";
 import type { FuelType, SearchMode, StationFilters } from "../../types/fuel";
 import { FiltersPanel } from "../FiltersPanel";
@@ -46,6 +46,15 @@ export function FuelFilterDock({ fuel, fuels, filters, filtersOpen, mode, distan
         <label className="dock-select"><Filter size={15} /><span className="sr-only">{mode === "route" ? "Ширина коридора" : "Радиус поиска"}</span><select value={distanceKm} onChange={(event) => onDistanceChange(Number(event.target.value))}>{distanceOptions.map((value) => <option key={value} value={value}>{value} км</option>)}</select></label>
         <span className="result-counter">{resultCount} АЗС</span>
         <button type="button" className="dock-action dock-action--filters" aria-label="Дополнительные фильтры" aria-expanded={filtersOpen} onClick={() => onFiltersOpenChange(!filtersOpen)}><SlidersHorizontal size={18} /></button>
+        <button
+          type="button"
+          className="dock-action dock-action--availability"
+          aria-pressed={filters.availability === "withFuel"}
+          title="Показывать АЗС, где топливо есть или заканчивается, включая станции с очередью"
+          onClick={() => onFiltersChange({ ...filters, availability: filters.availability === "withFuel" ? "all" : "withFuel" })}
+        >
+          <Check size={16} /><span>В наличии</span>
+        </button>
         <button type="button" className="dock-action dock-action--primary" disabled={!canSearch || loading} onClick={onSearch}><Search size={17} /><span>{loading ? "Ищем…" : "Найти"}</span></button>
         <button type="button" className="dock-action" disabled={!canSearch || loading} onClick={onRefresh} aria-label="Обновить данные"><RefreshCw size={17} className={loading ? "animate-spin" : ""} /></button>
       </div>

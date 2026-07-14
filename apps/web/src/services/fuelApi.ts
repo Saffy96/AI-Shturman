@@ -66,11 +66,11 @@ export async function fetchRouteFuel(params: RouteFuelParams, signal?: AbortSign
   return requestJson<RouteFuelResponse>(url, signal);
 }
 
-export async function searchGeo(query: string): Promise<GeoSearchResponse> {
+export async function searchGeo(query: string, signal?: AbortSignal): Promise<GeoSearchResponse> {
   const url = new URL("/api/geo/search", API_BASE_URL);
   url.searchParams.set("q", query);
 
-  return requestJson<GeoSearchResponse>(url);
+  return requestJson<GeoSearchResponse>(url, signal);
 }
 
 export async function fetchStationDetails(osmId: string, forceRefresh = false): Promise<StationDetailsResponse> {

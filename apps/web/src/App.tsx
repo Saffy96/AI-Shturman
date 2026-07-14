@@ -32,7 +32,7 @@ export function App() {
           onRequestLocation={() => void nav.requestLocation()}
           onOpenMap={() => nav.setIsNearbyMapPickerOpen(true)}
           onUseKazan={nav.useKazan}
-          onManualLocation={(coords) => nav.applyLocation(coords, "manual")}
+          onAddressSelect={(result) => nav.applyLocation({ lat: result.lat, lon: result.lon }, "manual", result.address)}
         />
       )}
       {nav.error ? <Notice tone="danger" text={nav.error} /> : null}
