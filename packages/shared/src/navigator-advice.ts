@@ -100,6 +100,7 @@ export function buildNavigatorAdvice(
 
 function compareCandidates(left: StationCandidate, right: StationCandidate): number {
   return (
+    compareNumber(right.station.hoseRating ?? 0, left.station.hoseRating ?? 0) ||
     compareBoolean(right.hasSelectedFuel, left.hasSelectedFuel) ||
     compareBoolean(right.station.status === "yes", left.station.status === "yes") ||
     compareBoolean(!right.station.hasQueue, !left.station.hasQueue) ||

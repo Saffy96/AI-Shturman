@@ -108,6 +108,8 @@ export interface NormalizedFuelStation {
   reliability: number;
   reliabilityLabel: ReliabilityLabel;
   rating: number;
+  hoseRating: number;
+  hasLimit: boolean;
   stopCost: StationStopCost;
   recommendation: string;
   rawDetail: string | null;

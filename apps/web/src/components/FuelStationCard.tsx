@@ -144,10 +144,15 @@ export const FuelStationCard = memo(function FuelStationCard({ station, selected
           )}
         </section>
 
-        <div className="relative mt-3 grid grid-cols-3 gap-2">
+        <div className="relative mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+          <QuickMetric icon={<Fuel size={13} />} label="Рейтинг «Шланга»" value={`${station.hoseRating}/100`} />
           <QuickMetric icon={<Clock size={13} />} label="Обновлено" value={relativeTime(updatedAt)} />
           <QuickMetric icon={<CheckCircle size={13} />} label="Уверенность" value={confidence == null ? "—" : `${Math.round(confidence)}%`} />
           <QuickMetric icon={<Navigation size={13} />} label="Отклонение" value={formatDeviation(station.distanceFromRouteKm)} />
+        </div>
+
+        <div className="relative mt-2 rounded-2xl border border-cyan-400/15 bg-cyan-400/[.07] px-3 py-2 text-xs font-black text-cyan-200">
+          AI Recommendation: {station.recommendation}
         </div>
 
         <div className="relative mt-3 grid grid-cols-[1fr_1fr_auto] gap-2">

@@ -5,7 +5,7 @@ import type {
   GdebenzStationRaw
 } from "@ai-shturman/gdebenz-client";
 import {
-  detailMentionsQueue, getFreshnessLabel, getQueueLabel, getRecommendation, getStatusLabel,
+  detailMentionsQueue, getFreshnessLabel, getQueueLabel, getStatusLabel,
   hasRequestedFuel, haversineDistanceKm, normalizeStationStatus, parseFuels, toNumberOrNull,
   type NormalizedFuelStation, type NormalizedStationDetails, type StationActivity, type StationActivityType,
   type StationPrice, type StationSource
@@ -28,16 +28,23 @@ export class StationNormalizer {
     const confirmations = toNumberOrNull(raw.confirmations);
     const reliability = clamp((confidence ?? 0.5) * 0.65 + freshness * 0.25 + Math.min(confirmations ?? 0, 5) / 50, 0, 1);
     const hasQueue = status === "queue" || raw.conflict === "queue" || detailMentionsQueue(detail);
+    const hasLimit = hasStationLimit(raw, detail);
     const deviation = route?.distanceFromRouteKm ?? null;
     const rating = calculateStationRating({ selectedFuel, status, freshness, reliability, deviationKm: deviation, hasQueue });
     const prices = parsePrices(raw);
-    const stopCost = calculateStopCost(deviation, requestedFuel === "all" ? null : prices?.[requestedFuel] ?? null);
+    const selectedPrice = findRequestedPrice(prices, requestedFuel);
+    const hoseRating = calculateHoseRating({
+      freshness, hasQueue, hasLimit, price: selectedPrice, deviationKm: deviation, confirmations,
+      reliability, brandKnown: Boolean(stringValue(raw.brand)), nextStationDistanceKm: null,
+      selectedFuel, status
+    });
+    const stopCost = calculateStopCost(deviation, selectedPrice);
     return {
       id: `osm:${raw.osm_id}`, source: "gdebenz", sources: ["gdebenz", "osm"], brand: stringValue(raw.brand), name: stringValue(raw.name), address: stringValue(raw.addr), lat, lon,
       distanceKm: toNumberOrNull(raw.distance_km) ?? fallbackDistanceKm ?? null, status, statusLabel: getStatusLabel(status), fuels, hasRequestedFuel: selectedFuel,
-      prices, hasQueue, queue: { present: hasQueue, vehicleRange: null, confirmations: null, estimatedMinutes: hasQueue ? 5 : 0 }, queueLabel: hasQueue ? "Есть очередь" : getQueueLabel(raw.conflict), confidence, confirmations, reports: Math.max(0, Math.round(confirmations ?? 0)), lastUpdatedAt: updatedAt, freshnessLabel, freshness,
-      reliability, reliabilityLabel: reliability >= 0.7 ? "high" : reliability >= 0.4 ? "medium" : "low", rating, stopCost,
-      recommendation: rating >= 60 ? "Лучше заехать сюда" : getRecommendation({ status, hasRequestedFuel: selectedFuel, hasQueue, freshnessLabel }), rawDetail: detail,
+      prices, hasQueue, hasLimit, queue: { present: hasQueue, vehicleRange: null, confirmations: null, estimatedMinutes: hasQueue ? 5 : 0 }, queueLabel: hasQueue ? "Есть очередь" : getQueueLabel(raw.conflict), confidence, confirmations, reports: Math.max(0, Math.round(confirmations ?? 0)), lastUpdatedAt: updatedAt, freshnessLabel, freshness,
+      reliability, reliabilityLabel: reliability >= 0.7 ? "high" : reliability >= 0.4 ? "medium" : "low", rating, hoseRating, stopCost,
+      recommendation: getAiRecommendation(hoseRating), rawDetail: detail,
       distanceFromRouteKm: deviation, distanceFromStartKm: route?.distanceFromStartKm ?? null, routePositionLabel: route?.routePositionLabel ?? null
     };
   }
@@ -335,6 +342,80 @@ export function calculateStationRating(input: { selectedFuel: boolean; status: N
   return Math.round(100 * fuel * input.freshness * deviation * queue * (0.65 + input.reliability * 0.35));
 }
 
+export interface HoseRatingInput {
+  freshness: number;
+  hasQueue: boolean;
+  hasLimit: boolean;
+  price: number | null;
+  referencePrice?: number | null;
+  deviationKm: number | null;
+  confirmations: number | null;
+  reliability: number;
+  brandKnown: boolean;
+  nextStationDistanceKm: number | null;
+  selectedFuel: boolean;
+  status: NormalizedFuelStation["status"];
+}
+
+/** Independent 0–100 score. It deliberately does not read or derive from GdeBENZ rating. */
+export function calculateHoseRating(input: HoseRatingInput): number {
+  const availability = !input.selectedFuel || input.status === "no" ? 0 : input.status === "yes" ? 1 : input.status === "queue" ? 0.72 : input.status === "low" ? 0.52 : 0.3;
+  const freshness = clamp(input.freshness, 0, 1);
+  const queue = input.hasQueue ? 0.3 : 1;
+  const limit = input.hasLimit ? 0.35 : 1;
+  const price = input.price == null || input.price <= 0
+    ? 0.45
+    : input.referencePrice == null || input.referencePrice <= 0
+      ? 0.75
+      : clamp(input.referencePrice / input.price, 0.35, 1);
+  const deviation = input.deviationKm == null ? 0.7 : clamp(Math.exp(-Math.max(0, input.deviationKm) / 4), 0.2, 1);
+  const confirmations = clamp(Math.log2(Math.max(0, input.confirmations ?? 0) + 1) / 3, 0, 1);
+  const reliability = clamp(input.reliability, 0, 1);
+  const brand = input.brandKnown ? 1 : 0.55;
+  // When the next usable station is far away, stopping here becomes more valuable.
+  const nextStation = input.nextStationDistanceKm == null
+    ? 0.55
+    : clamp(input.nextStationDistanceKm / 50, 0.25, 1);
+
+  const quality = freshness * 16 + queue * 12 + limit * 10 + price * 10 + deviation * 14
+    + confirmations * 10 + reliability * 14 + brand * 4 + nextStation * 10;
+  const score = availability * quality;
+  // A queue or a purchase limit must never produce an unconditional recommendation.
+  const safetyCap = input.hasQueue ? 54 : input.hasLimit ? 64 : 100;
+  return Math.round(clamp(Math.min(score, safetyCap), 0, 100));
+}
+
+export function getAiRecommendation(hoseRating: number): string {
+  if (hoseRating >= 75) return "Рекомендуем заехать";
+  if (hoseRating >= 55) return "Можно заехать";
+  if (hoseRating >= 35) return "Лучше проверить альтернативы";
+  return "Лучше пропустить";
+}
+
+export function applyHoseRatingContext(stations: NormalizedFuelStation[]): NormalizedFuelStation[] {
+  const ordered = [...stations].sort((left, right) => primaryDistance(left) - primaryDistance(right));
+  const knownPrices = stations.map((station) => station.stopCost.fuelPriceRub).filter((price): price is number => price != null && price > 0).sort((a, b) => a - b);
+  const referencePrice = knownPrices.length ? knownPrices[Math.floor((knownPrices.length - 1) / 2)] : null;
+
+  for (let index = 0; index < ordered.length; index += 1) {
+    const station = ordered[index];
+    const currentDistance = primaryDistance(station);
+    const next = ordered.slice(index + 1).find((candidate) => candidate.hasRequestedFuel && candidate.status !== "no");
+    const nextDistance = next && Number.isFinite(currentDistance) && Number.isFinite(primaryDistance(next))
+      ? Math.max(0, primaryDistance(next) - currentDistance)
+      : null;
+    station.hoseRating = calculateHoseRating({
+      freshness: station.freshness, hasQueue: station.hasQueue, hasLimit: station.hasLimit,
+      price: station.stopCost.fuelPriceRub, referencePrice, deviationKm: station.distanceFromRouteKm ?? null,
+      confirmations: station.confirmations, reliability: station.reliability,
+      brandKnown: Boolean(station.brand), nextStationDistanceKm: nextDistance,
+      selectedFuel: station.hasRequestedFuel, status: station.status
+    });
+    station.recommendation = getAiRecommendation(station.hoseRating);
+  }
+  return stations;
+}
+
 function normalizeDetailsPrices(raw: GdebenzStationDetailsRaw["pricesNow"]): Record<string, StationPrice> {
   if (!raw) return {};
 
@@ -362,6 +443,8 @@ export function mergeStationSources(groups: NormalizedFuelStation[][]): Normaliz
     existing.reliability = clamp(Math.max(existing.reliability, station.reliability) + 0.05 * (existing.sources.length - 1), 0, 1);
     existing.reliabilityLabel = existing.reliability >= 0.7 ? "high" : existing.reliability >= 0.4 ? "medium" : "low";
     existing.rating = Math.max(existing.rating, station.rating);
+    existing.hoseRating = Math.max(existing.hoseRating, station.hoseRating);
+    existing.hasLimit ||= station.hasLimit;
   }
   return merged;
 }
@@ -370,6 +453,14 @@ function sameIdentity(a: NormalizedFuelStation, b: NormalizedFuelStation): boole
 function freshnessScore(value: string | null): number { if (!value) return 0.25; const hours = Math.max(0, (Date.now() - new Date(value).getTime()) / 3_600_000); return hours <= 0.5 ? 1 : hours <= 2 ? 0.78 : hours <= 12 ? 0.5 : 0.28; }
 function normalizeProbability(value: number | null): number | null { if (value == null) return null; return clamp(value > 1 ? value / 100 : value, 0, 1); }
 function parsePrices(raw: Record<string, unknown>): Record<string, number> | null { const value = raw.prices ?? raw.fuel_prices; if (!value || typeof value !== "object") return null; const prices = Object.fromEntries(Object.entries(value).map(([fuel, price]) => [fuel, toNumberOrNull(price)]).filter((entry): entry is [string, number] => entry[1] != null)); return Object.keys(prices).length ? prices : null; }
+function findRequestedPrice(prices: Record<string, number> | null, requestedFuel: string): number | null { if (!prices || requestedFuel === "all") return null; return Object.entries(prices).find(([fuel]) => hasRequestedFuel([fuel], requestedFuel))?.[1] ?? null; }
+function hasStationLimit(raw: Record<string, unknown>, detail: string | null): boolean {
+  if (detail && /лимит/i.test(detail)) return true;
+  if (positiveNumberOrNull(raw.limit_liters ?? raw.limit) != null) return true;
+  const limits = isRecord(raw.limits) ? raw.limits : null;
+  return positiveNumberOrNull(limits?.lim) != null || positiveNumberOrNull(limits?.limCnt) != null;
+}
+function primaryDistance(station: NormalizedFuelStation): number { return station.distanceFromStartKm ?? station.distanceKm ?? Number.POSITIVE_INFINITY; }
 function calculateStopCost(deviationKm: number | null, price: number | null) { const km = Math.max(0, (deviationKm ?? 0) * 2); const fuelLiters = km * 0.1; return { deviationKm: deviationKm ?? 0, extraTimeMin: Math.round(km / 50 * 60), fuelLiters: Math.round(fuelLiters * 10) / 10, fuelPriceRub: price, totalRub: price == null ? null : Math.round(fuelLiters * price) }; }
 function stringValue(value: unknown): string | null { return typeof value === "string" && value.trim() ? value.trim() : null; }
 function clamp(value: number, min: number, max: number): number { return Math.min(max, Math.max(min, value)); }

@@ -28,6 +28,7 @@ import { TtlCache } from "../utils/ttl-cache.js";
 import { getFirstGeoResult, reverseGeo } from "./geo.service.js";
 import { getDrivingRoute } from "./openroute.service.js";
 import {
+  applyHoseRatingContext,
   extractActivityRecords,
   mergeStationActivities,
   mergeStationSources,
@@ -191,10 +192,10 @@ function gdebenzOptions() {
 
 export async function getNearbyFuel(params: NearbyFuelParams): Promise<NearbyFuelResponse> {
   const rawResponse = await getCachedNearbyStations(params);
-  const stations = mergeStationSources([rawResponse.stations
+  const stations = applyHoseRatingContext(mergeStationSources([rawResponse.stations
     .map((station) => stationNormalizer.normalizeGdebenz(station, params.fuel))
     .filter((station): station is NormalizedFuelStation => station !== null)
-  ]).sort((left, right) => right.rating - left.rating || (left.distanceKm ?? Number.POSITIVE_INFINITY) - (right.distanceKm ?? Number.POSITIVE_INFINITY));
+  ])).sort((left, right) => right.hoseRating - left.hoseRating || (left.distanceKm ?? Number.POSITIVE_INFINITY) - (right.distanceKm ?? Number.POSITIVE_INFINITY));
   await enrichStationAddresses(stations);
 
   return {
@@ -216,7 +217,7 @@ export async function getRouteFuel(params: RouteFuelParams): Promise<RouteFuelRe
   const corridorKm = params.corridorKm || adaptiveRadius(haversineDistanceKm(from, to));
   const routeFetch = await fetchApproximateRouteStations(from, to, corridorKm);
 
-  const stations = mergeStationSources([routeFetch.rawStations
+  const stations = applyHoseRatingContext(mergeStationSources([routeFetch.rawStations
     .map((station) => {
       const coordinates = toCoordinates(station);
       return stationNormalizer.normalizeGdebenz(
@@ -226,7 +227,7 @@ export async function getRouteFuel(params: RouteFuelParams): Promise<RouteFuelRe
       );
     })
     .filter((station): station is NormalizedFuelStation => station !== null)
-  ]).sort((left, right) => (left.distanceKm ?? Number.POSITIVE_INFINITY) - (right.distanceKm ?? Number.POSITIVE_INFINITY));
+  ])).sort((left, right) => (left.distanceKm ?? Number.POSITIVE_INFINITY) - (right.distanceKm ?? Number.POSITIVE_INFINITY));
   await enrichStationAddresses(stations);
 
   return {
@@ -252,7 +253,7 @@ export async function getRouteFuelReal(params: RouteFuelParams): Promise<RouteFu
   const corridorKm = params.corridorKm || adaptiveRadius(route.distanceKm);
   const routeFetch = await fetchRouteStationsAlongGeometry(route.geometry, corridorKm);
 
-  const stations = mergeStationSources([routeFetch.rawStations
+  const stations = applyHoseRatingContext(mergeStationSources([routeFetch.rawStations
     .map((station) => {
       const coordinates = toCoordinates(station);
 
@@ -273,7 +274,7 @@ export async function getRouteFuelReal(params: RouteFuelParams): Promise<RouteFu
       });
     })
     .filter((station): station is NormalizedFuelStation => station !== null)
-  ]).sort(compareRouteStations);
+  ])).sort(compareRouteStations);
   await enrichStationAddresses(stations);
 
   return {
