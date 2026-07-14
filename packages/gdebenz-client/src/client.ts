@@ -2,6 +2,8 @@ import { GdebenzClientError } from "./errors.js";
 import type {
   GdebenzBBoxStationRaw,
   GdebenzClientOptions,
+  GdebenzCommentInput,
+  GdebenzCommentResponse,
   GdebenzNearbyResponse,
   GdebenzRecentResponseRaw,
   GdebenzStationDetailsRaw,
@@ -72,7 +74,18 @@ export async function getStationRecent(
   );
 }
 
-async function requestJson<T>(path: string, options: GdebenzClientOptions): Promise<T> {
+export async function submitStationComment(
+  input: GdebenzCommentInput,
+  options: GdebenzClientOptions = {}
+): Promise<GdebenzCommentResponse> {
+  return requestJson<GdebenzCommentResponse>("/comments", options, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(input)
+  });
+}
+
+async function requestJson<T>(path: string, options: GdebenzClientOptions, init: RequestInit = {}): Promise<T> {
   const baseUrl = (options.baseUrl ?? DEFAULT_BASE_URL).replace(/\/+$/, "");
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const fetchImpl = options.fetchImpl ?? fetch;
@@ -81,10 +94,12 @@ async function requestJson<T>(path: string, options: GdebenzClientOptions): Prom
 
   try {
     const response = await fetchImpl(`${baseUrl}${path}`, {
-      method: "GET",
+      ...init,
+      method: init.method ?? "GET",
       headers: {
         accept: "application/json",
         "user-agent": "AI-Shturman-MVP/0.1",
+        ...init.headers,
         ...options.headers
       },
       signal: controller.signal

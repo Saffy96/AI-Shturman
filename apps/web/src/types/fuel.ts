@@ -5,7 +5,9 @@ import type {
   GeoSearchResult as SharedGeoSearchResult,
   NormalizedFuelStation,
   NormalizedStationDetails,
-  RouteFuelResponse as SharedRouteFuelResponse
+  RouteFuelResponse as SharedRouteFuelResponse,
+  StationReportInput as SharedStationReportInput,
+  StationReportResponse as SharedStationReportResponse
 } from "@ai-shturman/shared";
 
 export type FuelType = "all" | "92" | "95" | "98" | "100" | "ДТ";
@@ -59,6 +61,8 @@ export interface StationDetailsResponse {
   ok: true;
   station: StationDetails;
 }
+export type StationReportInput = SharedStationReportInput;
+export type StationReportResponse = SharedStationReportResponse;
 
 export interface RouteFuelParams {
   from: string;

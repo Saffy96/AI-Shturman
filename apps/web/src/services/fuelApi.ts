@@ -5,7 +5,9 @@ import type {
   NearbyFuelResponse,
   RouteFuelParams,
   RouteFuelResponse,
-  StationDetailsResponse
+  StationDetailsResponse,
+  StationReportInput,
+  StationReportResponse
 } from "../types/fuel";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:4000";
@@ -93,6 +95,20 @@ export async function fetchStationDetails(osmId: string, forceRefresh = false): 
   return request;
 }
 
+export async function submitStationReport(
+  osmId: string,
+  input: Omit<StationReportInput, "visitorId">
+): Promise<StationReportResponse> {
+  const url = new URL(`/api/fuel/stations/${encodeURIComponent(osmId)}/reports`, API_BASE_URL);
+  const response = await requestJson<StationReportResponse>(url, undefined, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ ...input, visitorId: getReportVisitorId() })
+  });
+  stationDetailsCache.delete(osmId);
+  return response;
+}
+
 export async function reverseGeo(lat: number, lon: number): Promise<GeoSearchResult> {
   const url = new URL("/api/geo/reverse", API_BASE_URL);
   url.searchParams.set("lat", String(lat));
@@ -101,7 +117,7 @@ export async function reverseGeo(lat: number, lon: number): Promise<GeoSearchRes
   return payload.result;
 }
 
-async function requestJson<T extends { ok: true }>(url: URL, externalSignal?: AbortSignal): Promise<T> {
+async function requestJson<T extends { ok: true }>(url: URL, externalSignal?: AbortSignal, init: RequestInit = {}): Promise<T> {
   const controller = new AbortController();
   const abortFromExternalSignal = () => controller.abort();
   if (externalSignal?.aborted) controller.abort();
@@ -110,9 +126,11 @@ async function requestJson<T extends { ok: true }>(url: URL, externalSignal?: Ab
 
   try {
     const response = await fetch(url.toString(), {
-      method: "GET",
+      ...init,
+      method: init.method ?? "GET",
       headers: {
-        accept: "application/json"
+        accept: "application/json",
+        ...init.headers
       },
       signal: controller.signal
     });
@@ -151,6 +169,21 @@ async function requestJson<T extends { ok: true }>(url: URL, externalSignal?: Ab
   } finally {
     window.clearTimeout(timeoutId);
     externalSignal?.removeEventListener("abort", abortFromExternalSignal);
+  }
+}
+
+function getReportVisitorId(): string {
+  const key = "ai-shturman:gdebenz-visitor-id";
+  try {
+    const existing = window.localStorage.getItem(key);
+    if (existing && /^[A-Za-z0-9_-]{16,128}$/.test(existing)) return existing;
+    const generated = typeof crypto.randomUUID === "function"
+      ? crypto.randomUUID().replace(/-/g, "")
+      : `${Date.now().toString(36)}${Math.random().toString(36).slice(2)}${Math.random().toString(36).slice(2)}`;
+    window.localStorage.setItem(key, generated);
+    return generated;
+  } catch {
+    return `${Date.now().toString(36)}${Math.random().toString(36).slice(2)}${Math.random().toString(36).slice(2)}`;
   }
 }
 

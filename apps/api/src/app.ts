@@ -26,7 +26,7 @@ app.use(
 
       callback(new Error(`CORS blocked origin: ${origin}`));
     },
-    methods: ["GET", "OPTIONS"]
+    methods: ["GET", "POST", "OPTIONS"]
   })
 );
 

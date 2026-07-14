@@ -13,7 +13,7 @@ import {
   Users
 } from "lucide-react";
 import { memo, useCallback, useEffect, useMemo, useState } from "react";
-import { fetchStationDetails } from "../services/fuelApi";
+import { fetchStationDetails, submitStationReport } from "../services/fuelApi";
 import type { FuelStation, StationDetails } from "../types/fuel";
 import { buildTwoGisUrl, buildYandexMapsUrl } from "../utils/maps";
 
@@ -64,19 +64,6 @@ export const FuelStationCard = memo(function FuelStationCard({ station, selected
     const next = !expanded;
     setExpanded(next);
     if (next) void loadDetails();
-  }
-
-  function report(kind: "fuel" | "queue") {
-    const key = "ai-shturman:stationReports";
-    let history: unknown[] = [];
-    try {
-      const stored = JSON.parse(window.localStorage.getItem(key) || "[]") as unknown;
-      if (Array.isArray(stored)) history = stored;
-    } catch { /* Ignore corrupted local reports and start a fresh history. */ }
-    history.unshift({ stationId: station.id, station: title, kind, createdAt: new Date().toISOString() });
-    try { window.localStorage.setItem(key, JSON.stringify(history.slice(0, 100))); }
-    catch { /* Reporting remains non-blocking when storage is unavailable. */ }
-    window.dispatchEvent(new Event("ai-shturman:reports-updated"));
   }
 
   return (
@@ -169,14 +156,14 @@ export const FuelStationCard = memo(function FuelStationCard({ station, selected
 
       {expanded ? (
         <div className="border-t border-white/[.07] bg-[#080c12] p-4">
-          {loading && !details ? <DetailsSkeleton /> : details ? <StationDetailsPanel details={details} loading={loading} onRefresh={() => void loadDetails(true)} onReport={report} /> : detailsError ? <button type="button" onClick={() => void loadDetails()} className="w-full rounded-2xl border border-red-400/20 bg-red-400/10 p-3 text-sm font-bold text-red-200">{detailsError} Нажмите, чтобы повторить</button> : null}
+          {loading && !details ? <DetailsSkeleton /> : details ? <StationDetailsPanel station={station} details={details} loading={loading} onRefresh={() => void loadDetails(true)} /> : detailsError ? <button type="button" onClick={() => void loadDetails()} className="w-full rounded-2xl border border-red-400/20 bg-red-400/10 p-3 text-sm font-bold text-red-200">{detailsError} Нажмите, чтобы повторить</button> : null}
         </div>
       ) : null}
     </article>
   );
 });
 
-function StationDetailsPanel({ details, loading, onRefresh, onReport }: { details: StationDetails; loading: boolean; onRefresh: () => void; onReport: (kind: "fuel" | "queue") => void }) {
+function StationDetailsPanel({ station, details, loading, onRefresh }: { station: FuelStation; details: StationDetails; loading: boolean; onRefresh: () => void }) {
   const [showAllActivities, setShowAllActivities] = useState(false);
   const visibleActivities = showAllActivities ? details.activities : details.activities.slice(0, 5);
   const activityGroups = groupActivitiesByDate(visibleActivities);
@@ -243,17 +230,90 @@ function StationDetailsPanel({ details, loading, onRefresh, onReport }: { detail
         </div>
       ) : null}
 
-      <div>
-        <div className="mb-2 text-[10px] font-black uppercase tracking-[.18em] text-slate-500">Подтвердить обстановку</div>
-        <div className="grid grid-cols-2 gap-2">
-          <button type="button" onClick={() => onReport("fuel")} className="min-h-11 rounded-xl bg-emerald-400/10 text-xs font-black text-emerald-300 transition hover:bg-emerald-400/15">Топливо есть</button>
-          <button type="button" onClick={() => onReport("queue")} className="min-h-11 rounded-xl bg-amber-400/10 text-xs font-black text-amber-300 transition hover:bg-amber-400/15">Есть очередь</button>
-        </div>
-      </div>
+      <StationReportForm station={station} details={details} onSubmitted={onRefresh} />
 
       <div className="border-t border-white/[.07] pt-3 text-[10px] font-semibold leading-relaxed text-slate-600">По отметкам водителей. Данные не являются официальной информацией сети АЗС.</div>
     </div>
   );
+}
+
+function StationReportForm({ station, details, onSubmitted }: { station: FuelStation; details: StationDetails; onSubmitted: () => void }) {
+  const grades = ["92", "95", "98", "100", "ДТ"] as const;
+  const initialGrades = grades.filter((grade) => [...station.fuels, ...details.fuels].some((fuel) => normalizeFuelKey(fuel) === grade));
+  const [availability, setAvailability] = useState<"yes" | "no">("yes");
+  const [selectedGrades, setSelectedGrades] = useState<string[]>(initialGrades);
+  const [hasQueue, setHasQueue] = useState(false);
+  const [limitLiters, setLimitLiters] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [result, setResult] = useState<{ tone: "success" | "error"; text: string } | null>(null);
+
+  function toggleGrade(grade: string) {
+    setSelectedGrades((current) => current.includes(grade) ? current.filter((item) => item !== grade) : [...current, grade]);
+  }
+
+  async function submit(event: React.FormEvent) {
+    event.preventDefault();
+    if (availability === "yes" && selectedGrades.length === 0) {
+      setResult({ tone: "error", text: "Выберите хотя бы одну марку топлива." });
+      return;
+    }
+    setSubmitting(true);
+    setResult(null);
+    try {
+      const osmId = station.id.startsWith("osm:") ? station.id.slice(4) : station.id;
+      await submitStationReport(osmId, {
+        stationName: station.brand || station.name || "АЗС",
+        lat: station.lat,
+        lon: station.lon,
+        availability,
+        fuelTypes: availability === "yes" ? selectedGrades : [],
+        limitLiters: availability === "yes" && limitLiters ? Number(limitLiters) : null,
+        hasQueue: availability === "yes" && hasQueue
+      });
+      setResult({ tone: "success", text: "Отметка передана в ГдеБЕНЗ. Спасибо, что помогаете водителям!" });
+      onSubmitted();
+    } catch (error) {
+      setResult({ tone: "error", text: error instanceof Error ? error.message : "Не удалось отправить отметку." });
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <form onSubmit={submit} className="rounded-2xl border border-emerald-400/15 bg-emerald-400/[.06] p-3">
+      <div className="text-[10px] font-black uppercase tracking-[.18em] text-emerald-300">Добавить отметку в ГдеБЕНЗ</div>
+      <div className="mt-3 grid grid-cols-2 gap-2">
+        <ChoiceButton active={availability === "yes"} onClick={() => setAvailability("yes")} label="Топливо есть" />
+        <ChoiceButton active={availability === "no"} onClick={() => setAvailability("no")} label="Топлива нет" />
+      </div>
+      {availability === "yes" ? (
+        <div className="mt-3 grid gap-3">
+          <fieldset>
+            <legend className="mb-2 text-[10px] font-black uppercase tracking-wider text-slate-500">Марка топлива</legend>
+            <div className="flex flex-wrap gap-2">
+              {grades.map((grade) => <ChoiceButton key={grade} active={selectedGrades.includes(grade)} onClick={() => toggleGrade(grade)} label={fuelLabel(grade)} compact />)}
+            </div>
+          </fieldset>
+          <div className="grid grid-cols-2 gap-2">
+            <ChoiceButton active={hasQueue} onClick={() => setHasQueue((value) => !value)} label="Есть очередь" />
+            <label className="rounded-xl bg-white/[.05] px-3 py-2 text-[10px] font-black uppercase tracking-wide text-slate-500">
+              Лимит, литров
+              <input value={limitLiters} onChange={(event) => setLimitLiters(event.target.value)} type="number" min="1" max="500" inputMode="numeric" placeholder="Нет" className="mt-1 w-full bg-transparent text-sm font-black text-white outline-none placeholder:text-slate-600" />
+            </label>
+          </div>
+        </div>
+      ) : null}
+      {result ? <div className={`mt-3 rounded-xl px-3 py-2 text-xs font-bold ${result.tone === "success" ? "bg-emerald-400/10 text-emerald-200" : "bg-red-400/10 text-red-200"}`}>{result.text}</div> : null}
+      <button type="submit" disabled={submitting} className="mt-3 min-h-11 w-full rounded-xl bg-emerald-400 px-4 text-sm font-black text-emerald-950 disabled:opacity-50">
+        {submitting ? "Отправляем…" : "Отправить отметку"}
+      </button>
+      <div className="mt-2 text-[9px] font-semibold leading-relaxed text-slate-500">Анонимная пользовательская отметка. ГдеБЕНЗ не проверяет её и показывает как мнение водителя.</div>
+    </form>
+  );
+}
+
+function ChoiceButton({ active, onClick, label, compact = false }: { active: boolean; onClick: () => void; label: string; compact?: boolean }) {
+  return <button type="button" aria-pressed={active} onClick={onClick} className={`${compact ? "min-h-9 px-3" : "min-h-11 px-2"} rounded-xl text-xs font-black transition ${active ? "bg-emerald-400 text-emerald-950" : "bg-white/[.06] text-slate-300 hover:bg-white/[.10]"}`}>{active ? "✓ " : ""}{label}</button>;
 }
 
 function QuickMetric({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {

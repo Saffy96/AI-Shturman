@@ -10,13 +10,15 @@ import {
   type NearbyFuelResponse,
   type NormalizedFuelStation,
   type NormalizedStationDetails,
-  type RouteFuelResponse
+  type RouteFuelResponse,
+  type StationReportInput
 } from "@ai-shturman/shared";
 import {
   getStationsByBBox,
   getNearbyStations,
   getStationDetails,
   getStationRecent,
+  submitStationComment,
   GdebenzClientError,
   type GdebenzBBoxStationRaw,
   type GdebenzNearbyResponse,
@@ -119,6 +121,48 @@ export async function getFuelStationDetails(osmId: number | string, forceRefresh
   }
 
   return station;
+}
+
+export async function submitFuelStationReport(osmId: string, input: StationReportInput): Promise<void> {
+  const fuelTypes = input.availability === "yes" ? [...new Set(input.fuelTypes)] : [];
+  const detailParts = [
+    fuelTypes.join(", "),
+    input.hasQueue ? "Очередь" : "",
+    input.limitLiters != null ? `Лимит ${input.limitLiters} л` : ""
+  ].filter(Boolean);
+  const status = input.availability === "no" ? "no" : input.hasQueue ? "queue" : input.limitLiters != null ? "low" : "yes";
+
+  try {
+    await submitStationComment({
+      osm_id: osmId,
+      name: input.stationName,
+      lat: input.lat,
+      lon: input.lon,
+      status,
+      text: detailParts.join(" · "),
+      fp: input.visitorId,
+      cf: "",
+      vt: ""
+    }, gdebenzOptions());
+  } catch (error) {
+    if (error instanceof GdebenzClientError && error.statusCode === 409) {
+      throw httpError(409, "Эту АЗС можно обновлять не чаще одного раза в два часа.");
+    }
+    if (error instanceof GdebenzClientError && error.statusCode === 429) {
+      throw httpError(429, "Слишком много отметок. Попробуйте немного позже.");
+    }
+    if (error instanceof GdebenzClientError && error.statusCode === 403) {
+      throw httpError(403, "ГдеБЕНЗ отклонил отметку. Попробуйте отправить её позже.");
+    }
+    throw error;
+  }
+
+  detailsCache.delete(osmId);
+  recentCache.delete(osmId);
+}
+
+function httpError(statusCode: number, message: string): Error & { statusCode: number } {
+  return Object.assign(new Error(message), { statusCode });
 }
 
 async function getCachedStationDetails(osmId: number | string, forceRefresh: boolean): Promise<GdebenzStationDetailsRaw> {

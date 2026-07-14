@@ -1,5 +1,6 @@
+import type { StationReportInput } from "@ai-shturman/shared";
 import type { NextFunction, Request, Response } from "express";
-import { getFuelStationDetails, getNearbyFuel, getRouteFuel, getRouteFuelReal } from "../services/fuel.service.js";
+import { getFuelStationDetails, getNearbyFuel, getRouteFuel, getRouteFuelReal, submitFuelStationReport } from "../services/fuel.service.js";
 
 export async function getFuelStationDetailsController(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
@@ -15,6 +16,18 @@ export async function getFuelStationDetailsController(req: Request, res: Respons
 
 export function isValidStationId(value: string): boolean {
   return /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/.test(value);
+}
+
+export async function submitFuelStationReportController(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const osmId = req.params.osmId?.trim();
+    if (!osmId || !isValidStationId(osmId)) throw validationError("osmId must be a valid station identifier");
+    const input = parseStationReport(req.body);
+    await submitFuelStationReport(osmId, input);
+    res.json({ ok: true, submitted: true });
+  } catch (error) {
+    next(error);
+  }
 }
 
 export async function getNearbyFuelController(req: Request, res: Response, next: NextFunction): Promise<void> {
@@ -192,6 +205,37 @@ function parseOptionalCoordinate(
   }
 
   return parsed;
+}
+
+export function parseStationReport(body: unknown): StationReportInput {
+  if (!body || typeof body !== "object" || Array.isArray(body)) throw validationError("report body is required");
+  const input = body as Record<string, unknown>;
+  const stationName = String(input.stationName ?? "").trim().slice(0, 160);
+  const lat = Number(input.lat);
+  const lon = Number(input.lon);
+  const availability = input.availability;
+  const visitorId = String(input.visitorId ?? "").trim();
+  const hasQueue = input.hasQueue === true;
+  const limitLiters = input.limitLiters == null || input.limitLiters === "" ? null : Number(input.limitLiters);
+  const allowedFuelTypes = new Set(["92", "95", "98", "100", "ДТ"]);
+  const fuelTypes = Array.isArray(input.fuelTypes)
+    ? [...new Set(input.fuelTypes.map(String).filter((fuel) => allowedFuelTypes.has(fuel)))]
+    : [];
+
+  if (!stationName) throw validationError("stationName is required");
+  if (!Number.isFinite(lat) || lat < -90 || lat > 90) throw validationError("lat must be between -90 and 90");
+  if (!Number.isFinite(lon) || lon < -180 || lon > 180) throw validationError("lon must be between -180 and 180");
+  if (availability !== "yes" && availability !== "no") throw validationError("availability must be yes or no");
+  if (!/^[A-Za-z0-9_-]{16,128}$/.test(visitorId)) throw validationError("visitorId is invalid");
+  if (limitLiters != null && (!Number.isFinite(limitLiters) || limitLiters < 1 || limitLiters > 500)) throw validationError("limitLiters must be between 1 and 500");
+  if (availability === "yes" && fuelTypes.length === 0) throw validationError("at least one fuel type is required");
+
+  return {
+    stationName, lat, lon, availability, fuelTypes,
+    limitLiters: availability === "yes" ? limitLiters : null,
+    hasQueue: availability === "yes" && hasQueue,
+    visitorId
+  };
 }
 
 function validationError(message: string): Error & { statusCode: number } {

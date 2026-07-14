@@ -174,3 +174,19 @@ export interface StationDetailsResponse {
   ok: true;
   station: NormalizedStationDetails;
 }
+
+export interface StationReportInput {
+  stationName: string;
+  lat: number;
+  lon: number;
+  availability: "yes" | "no";
+  fuelTypes: string[];
+  limitLiters: number | null;
+  hasQueue: boolean;
+  visitorId: string;
+}
+
+export interface StationReportResponse {
+  ok: true;
+  submitted: true;
+}

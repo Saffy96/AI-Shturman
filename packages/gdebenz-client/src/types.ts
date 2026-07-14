@@ -140,3 +140,22 @@ export interface GdebenzClientOptions {
   headers?: Record<string, string>;
   fetchImpl?: typeof fetch;
 }
+
+export interface GdebenzCommentInput {
+  osm_id: string;
+  name: string;
+  lat: number;
+  lon: number;
+  status: "yes" | "queue" | "low" | "no";
+  text: string;
+  fp: string;
+  cf: string;
+  vt: string;
+}
+
+export interface GdebenzCommentResponse {
+  ok?: boolean;
+  edit_grace_left?: number;
+  error?: string;
+  [key: string]: unknown;
+}
