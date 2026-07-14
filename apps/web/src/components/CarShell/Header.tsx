@@ -7,7 +7,7 @@ export function Header({ online, gpsReady, accuracy, routeActive, filtersOpen, o
 
   return (
     <header className="top-navigation glass-panel">
-      <div className="product-mark"><span className="product-mark__icon">A</span><div><strong>Помошник по поиску АЗС – "Шланг"</strong><small>Ищите топливо на карте</small></div></div>
+      <div className="product-mark"><span className="product-mark__icon">A</span><div><strong>Помощник по поиску АЗС – "Шланг"</strong><small>Ищите топливо на карте</small></div></div>
       <div className="top-navigation__status">
         <Status icon={<LocateFixed size={15} />} active={gpsReady} text={gpsReady ? `GPS${accuracy ? ` · ${Math.round(accuracy)} м` : ""}` : "GPS"} />
         <Status icon={online ? <Wifi size={15} /> : <WifiOff size={15} />} active={online} text={online ? "Онлайн" : "Офлайн"} />
