@@ -26,3 +26,4 @@ VITE_API_BASE_URL=http://localhost:4000
 ```
 
 The backend uses Yandex Geocoder first and Nominatim as a fallback.
+asdasd
