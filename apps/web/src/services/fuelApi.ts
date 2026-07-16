@@ -75,6 +75,17 @@ export async function searchGeo(query: string, signal?: AbortSignal): Promise<Ge
   return requestJson<GeoSearchResponse>(url, signal);
 }
 
+export async function searchGeoSuggestions(query: string, signal?: AbortSignal): Promise<GeoSearchResponse> {
+  const url = new URL("/api/geo/autocomplete", API_BASE_URL);
+  url.searchParams.set("q", query);
+  try {
+    return await requestJson<GeoSearchResponse>(url, signal);
+  } catch (error) {
+    if (!(error instanceof FuelApiError) || error.statusCode !== 404 || signal?.aborted) throw error;
+    return searchGeo(query, signal);
+  }
+}
+
 export async function fetchStationDetails(osmId: string, forceRefresh = false): Promise<StationDetailsResponse> {
   if (!forceRefresh) {
     const cached = readStationDetailsCache(osmId);

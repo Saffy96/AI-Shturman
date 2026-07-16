@@ -14,7 +14,9 @@ Current implementation:
 `apps/api/.env`:
 
 ```env
-YANDEX_API_KEY=your_yandex_geocoder_key
+GEOAPIFY_API_KEY=your_geoapify_key
+GEOAPIFY_BASE_URL=https://api.geoapify.com
+GEOAPIFY_TIMEOUT_MS=8000
 OPENROUTESERVICE_API_KEY=your_openrouteservice_key
 ```
 
@@ -25,5 +27,4 @@ VITE_YANDEX_MAPS_API_KEY=your_yandex_javascript_api_key
 VITE_API_BASE_URL=http://localhost:4000
 ```
 
-The backend uses Yandex Geocoder first and Nominatim as a fallback.
-asdasd
+The backend uses Geoapify for autocomplete, forward search, and reverse geocoding. The API key stays on the backend. Yandex Maps remains responsible only for displaying the map, markers, and routes.

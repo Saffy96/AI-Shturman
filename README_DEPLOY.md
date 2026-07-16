@@ -72,6 +72,9 @@ NODE_ENV=production
 FRONTEND_ORIGIN=https://FRONTEND_URL
 GDEBENZ_BASE_URL=https://gdebenz.ru/api
 GDEBENZ_TIMEOUT_MS=8000
+GEOAPIFY_API_KEY=YOUR_GEOAPIFY_KEY
+GEOAPIFY_BASE_URL=https://api.geoapify.com
+GEOAPIFY_TIMEOUT_MS=8000
 OPENROUTESERVICE_BASE_URL=https://api.openrouteservice.org
 OPENROUTESERVICE_API_KEY=YOUR_ORS_KEY
 OPENROUTESERVICE_TIMEOUT_MS=12000
@@ -84,7 +87,9 @@ Useful backend endpoints:
 
 ```txt
 GET /health
+GET /api/geo/autocomplete?q=Казань
 GET /api/geo/search?q=Казань
+GET /api/geo/reverse?lat=55.796127&lon=49.106414
 GET /api/fuel/nearby?lat=55.796127&lon=49.106414&radiusKm=50&fuel=95
 GET /api/fuel/route-real?from=Казань&to=Дюртюли&fuel=95&corridorKm=5
 GET /api/fuel/route?from=Казань&to=Дюртюли&fuel=95&corridorKm=5
@@ -107,6 +112,7 @@ Environment variable:
 
 ```txt
 VITE_API_BASE_URL=https://BACKEND_URL
+VITE_YANDEX_MAPS_API_KEY=YOUR_YANDEX_JAVASCRIPT_API_KEY
 ```
 
 ## D. Verify Production

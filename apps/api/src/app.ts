@@ -6,6 +6,7 @@ import { fuelRouter } from "./routes/fuel.routes.js";
 import { geoRouter } from "./routes/geo.routes.js";
 
 export const app = express();
+app.set("trust proxy", 1);
 
 const allowedOrigins = new Set([
   "http://localhost:5173",

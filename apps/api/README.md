@@ -44,7 +44,9 @@ GDEBENZ_BASE_URL=https://gdebenz.ru/api
 GDEBENZ_TIMEOUT_MS=8000
 OPENROUTESERVICE_BASE_URL=https://api.openrouteservice.org
 OPENROUTESERVICE_API_KEY=your_openrouteservice_api_key
-YANDEX_API_KEY=your_yandex_geocoder_api_key
+GEOAPIFY_API_KEY=your_geoapify_api_key
+GEOAPIFY_BASE_URL=https://api.geoapify.com
+GEOAPIFY_TIMEOUT_MS=8000
 OPENROUTESERVICE_TIMEOUT_MS=12000
 CACHE_TTL_MS=60000
 ```
@@ -69,7 +71,21 @@ curl "http://localhost:4000/api/fuel/nearby?lat=55.796127&lon=49.106414&radiusKm
 curl "http://localhost:4000/api/geo/search?q=Казань"
 ```
 
-Uses OpenRouteService Geocoding with 24h in-memory cache and local presets for common cities.
+Uses Geoapify Search with a 24-hour in-memory cache.
+
+### GET /api/geo/autocomplete
+
+```bash
+curl "http://localhost:4000/api/geo/autocomplete?q=Казань"
+```
+
+Uses Geoapify Autocomplete with a 10-minute in-memory cache. Optional `lat` and `lon` parameters add a proximity bias.
+
+### GET /api/geo/reverse
+
+```bash
+curl "http://localhost:4000/api/geo/reverse?lat=55.796127&lon=49.106414"
+```
 
 ### GET /api/fuel/route-real
 

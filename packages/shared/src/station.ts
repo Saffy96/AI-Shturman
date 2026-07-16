@@ -143,6 +143,10 @@ export interface GeoSearchResult {
   address: string;
   lat: number;
   lon: number;
+  provider?: "geoapify";
+  placeId?: string;
+  resultType?: string;
+  confidence?: number;
 }
 
 export interface GeoSearchResponse {

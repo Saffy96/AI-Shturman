@@ -1,6 +1,6 @@
 import { MapPin, Search } from "lucide-react";
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
-import { searchGeo } from "../services/fuelApi";
+import { searchGeoSuggestions } from "../services/fuelApi";
 import type { GeoSearchResult } from "../types/fuel";
 
 interface Props {
@@ -51,7 +51,7 @@ export function AddressAutocomplete({ value = "", placeholder = "Введите 
       setLoading(true);
       setMessage(null);
       try {
-        const response = await searchGeo(query, controller.signal);
+        const response = await searchGeoSuggestions(query, controller.signal);
         setSuggestions(response.results);
         setActiveIndex(response.results.length ? 0 : -1);
         setMessage(response.results.length ? null : "Ничего не найдено. Уточните адрес.");
